@@ -1,5 +1,5 @@
 <!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
-<title>Stripe Mask Reveal</title>
+<title>Stripe Mask Reveal Generator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -87,7 +87,11 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
 .points code, p code{font-family:var(--mono); font-size:.9em; background:var(--sunk); padding:1px 5px; border-radius:4px; color:var(--fg)}
 .snippet{position:relative; min-width:0}
 .snippet pre{margin:0; overflow-x:auto; background:var(--code-bg); color:var(--code-fg); font-family:var(--mono); font-size:12.5px; line-height:1.6; padding:18px; border-radius:8px}
-.snippet .btn{position:absolute; top:10px; right:10px; padding:5px 10px; font-size:12px}
+.snippet{display:grid; gap:8px}
+.snip-head{display:flex; justify-content:space-between; align-items:center; gap:8px}
+.snip-head .btn{padding:6px 12px; font-size:12px}
+.snip-head .tabs{flex:0 1 auto}
+.snip-note{margin:0; font-size:13px; color:var(--muted); max-width:70ch}
 .c{color:#7f8aa3}
 
 @media (max-width:820px){
@@ -204,11 +208,11 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
       <div class="points">
         <div>
           <h3>1. One object per strip</h3>
-          <p>GSAP can tween any object, not only elements. <code>strips</code> is an array of <code>{ v: 0 }</code>. Passing the whole array to <code>tl.to()</code> with <code>stagger</code> gives every strip its own delayed, eased progress from 0 to 1.</p>
+          <p>GSAP can tween any object, not only elements. <code>strips</code> is an array of <code>{ progress: 0 }</code>. Passing the whole array to <code>tl.to()</code> with <code>stagger</code> gives every strip its own delayed, eased progress from 0 to 1.</p>
         </div>
         <div>
           <h3>2. Rewrite the gradient every frame</h3>
-          <p>In the timeline's <code>onUpdate</code>, each strip becomes two hard stops: black from the slot's start to <code>start + width × v</code>, then transparent to the slot's end. Black shows the image and transparent hides it.</p>
+          <p>In the timeline's <code>onUpdate</code>, <code>paintMask()</code> turns each strip into hard stops: black from <code>stripStart</code> to <code>stripStart + stripWidth × progress</code>, then transparent to the slot's end. Black shows the image and transparent hides it.</p>
         </div>
         <div>
           <h3>3. ScrollTrigger drives the timeline</h3>
@@ -220,45 +224,16 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
         </div>
       </div>
       <div class="snippet">
-        <button type="button" class="btn ghosty" id="copySnip">Copy</button>
-<pre id="snip"><span class="c">// &lt;script src="gsap.min.js"&gt; + ScrollTrigger.min.js</span>
-gsap.registerPlugin(ScrollTrigger);
-
-const el = document.querySelector(".reveal");
-const N = 12;
-const strips = Array.from({ length: N }, () =&gt; ({ v: 0 }));
-
-function paint() {
-  const w = 100 / N;
-  const stops = strips.map((s, i) =&gt; {
-    const a = i * w, b = a + w;
-    const r = a + w * Math.min(1, Math.max(0, s.v));
-    return `#000 ${a}%, #000 ${r}%, transparent ${r}%, transparent ${b}%`;
-  });
-  const g = `linear-gradient(90deg, ${stops.join(", ")})`;
-  el.style.webkitMaskImage = el.style.maskImage = g;
-}
-
-gsap.timeline({
-  scrollTrigger: {
-    trigger: ".reveal-track",
-    start: "top top",
-    end: "bottom bottom",
-    scrub: 0.6
-  },
-  onUpdate: paint
-})
-.to(strips, {
-  v: 1,
-  duration: 1,
-  ease: "power3.inOut",
-  stagger: { each: 0.08, from: "start" }
-});
-
-paint(); <span class="c">// start fully hidden</span>
-
-<span class="c">/* CSS */</span>
-<span class="c">/* .reveal { mask-size: 100% 100%; mask-repeat: no-repeat; } */</span></pre>
+        <span class="eyebrow">Code for your current settings</span>
+        <div class="snip-head">
+          <div class="seg tabs" data-key="codeView" aria-label="Code version">
+            <button type="button" id="code-gsap" data-v="gsap" aria-pressed="true">GSAP + ScrollTrigger</button>
+            <button type="button" id="code-css" data-v="css" aria-pressed="false">Pure CSS clamp()</button>
+          </div>
+          <button type="button" class="btn ghosty" id="copySnip">Copy</button>
+        </div>
+        <p class="snip-note" id="snipNote"></p>
+<pre id="snip"></pre>
       </div>
     </div>
   </section>
@@ -313,7 +288,7 @@ paint(); <span class="c">// start fully hidden</span>
   const state=Object.assign({},DEFAULTS);
   const $=id=>document.getElementById(id);
   const frame=$('frame'), meters=$('meters'), live=$('live');
-  let strips=[], meterEls=[], tl=null, lastStr='';
+  let strips=[], meterEls=[], tl=null, lastStr='', codeView='gsap';
 
   const f=v=>(Math.round(v*1000)/1000)+'%';
 
@@ -372,14 +347,214 @@ paint(); <span class="c">// start fully hidden</span>
     tl.to(strips,{v:1, duration:state.mode==='scrub'?1:1.1, ease:state.ease, stagger:{each:state.each, from:state.from}});
     $('replay').hidden = state.mode!=='play';
     paintAndReadout(); liveTick=0;
+    renderSnippet();
     ScrollTrigger.refresh();
   }
 
-  /* ---------- controls ---------- */
+
+  /* ---------- code snippet that mirrors the current settings ---------- */
+  function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+  function snippetText(){
+    const F=state.feather/100, o=state.origin, L=[];
+    L.push('// <script src="gsap.min.js"> + ScrollTrigger.min.js');
+    L.push('gsap.registerPlugin(ScrollTrigger);','');
+    L.push('const revealElement = document.querySelector(".reveal");');
+    L.push('const STRIP_COUNT = '+state.n+';');
+    if(F>0) L.push('const FEATHER_AMOUNT = '+F+'; // soft leading edge, as a fraction of one strip');
+    L.push('');
+    L.push('// One plain object per strip. GSAP tweens each "progress" from 0 to 1.');
+    L.push('const strips = Array.from({ length: STRIP_COUNT }, () => ({ progress: 0 }));','');
+    L.push('function paintMask() {');
+    L.push('  const stripWidth = 100 / STRIP_COUNT; // in %');
+    L.push('');
+    L.push('  const colorStops = strips.map((strip, index) => {');
+    L.push('    const stripStart = index * stripWidth;');
+    L.push('    const stripEnd = stripStart + stripWidth;');
+    L.push('    const progress = Math.min(1, Math.max(0, strip.progress)); // clamp eases that overshoot');
+    L.push('    const revealedWidth = stripWidth * progress;');
+    L.push('');
+    if(o==='left'){
+      L.push('    // Each strip grows from: LEFT');
+      L.push('    // Visible part is pinned to stripStart and its right edge moves right.');
+      L.push('    const revealEnd = stripStart + revealedWidth;');
+      if(F>0){
+        L.push('    const featherWidth = Math.min(FEATHER_AMOUNT * stripWidth * (1 - progress), revealedWidth);');
+        L.push('    return `#000 ${stripStart}%, #000 ${revealEnd - featherWidth}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;');
+      } else {
+        L.push('    return `#000 ${stripStart}%, #000 ${revealEnd}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;');
+      }
+    }else if(o==='right'){
+      L.push('    // Each strip grows from: RIGHT');
+      L.push('    // Visible part is pinned to stripEnd and its left edge moves left.');
+      L.push('    const revealStart = stripEnd - revealedWidth;');
+      if(F>0){
+        L.push('    const featherWidth = Math.min(FEATHER_AMOUNT * stripWidth * (1 - progress), revealedWidth);');
+        L.push('    return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart + featherWidth}%, #000 ${stripEnd}%`;');
+      } else {
+        L.push('    return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart}%, #000 ${stripEnd}%`;');
+      }
+    }else{
+      L.push('    // Each strip grows from: CENTER');
+      L.push('    // Visible part is centred in the strip and both edges move outward.');
+      L.push('    const stripCenter = stripStart + stripWidth / 2;');
+      L.push('    const revealStart = stripCenter - revealedWidth / 2;');
+      L.push('    const revealEnd = stripCenter + revealedWidth / 2;');
+      if(F>0){
+        L.push('    const featherWidth = Math.min(FEATHER_AMOUNT * stripWidth * (1 - progress), revealedWidth / 2);');
+        L.push('    return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart + featherWidth}%, #000 ${revealEnd - featherWidth}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;');
+      } else {
+        L.push('    return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart}%, #000 ${revealEnd}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;');
+      }
+    }
+    L.push('  });','');
+    L.push('  const maskGradient = `linear-gradient(90deg, ${colorStops.join(", ")})`;');
+    L.push('  revealElement.style.webkitMaskImage = maskGradient;');
+    L.push('  revealElement.style.maskImage = maskGradient;','}','');
+    L.push('gsap.timeline({','  scrollTrigger: {','    trigger: ".reveal-track",');
+    if(state.mode==='scrub'){ L.push('    start: "top top",','    end: "bottom bottom",','    scrub: 0.6'); }
+    else { L.push('    start: "top 55%",','    toggleActions: "play none none reverse"'); }
+    L.push('  },','  onUpdate: paintMask','})','.to(strips, {','  progress: 1,');
+    L.push('  duration: '+(state.mode==='scrub'?1:1.1)+',');
+    L.push('  ease: "'+state.ease+'",');
+    L.push('  stagger: { each: '+state.each+', from: "'+state.from+'" }');
+    L.push('});','','paintMask(); // start fully hidden','');
+    L.push('/* CSS */');
+    L.push('/* .reveal { mask-size: 100% 100%; mask-repeat: no-repeat; } */');
+    if(state.mode==='scrub') L.push('/* .reveal-track { height: 300vh; }  put .reveal inside a position: sticky child */');
+    return L.join('\n');
+  }
+  const r4=x=>String(Math.round(x*10000)/10000);
+
+  // Same ordering rules GSAP uses for stagger "from", as delays in timeline units
+  function staggerDelays(n,each,from){
+    const c=(n-1)/2; let d;
+    if(from==='end') d=[...Array(n).keys()].map(i=>n-1-i);
+    else if(from==='center') d=[...Array(n).keys()].map(i=>Math.abs(i-c));
+    else if(from==='edges') d=[...Array(n).keys()].map(i=>c-Math.abs(i-c));
+    else if(from==='random'){
+      let seed=n*97+13; const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
+      const order=[...Array(n).keys()];
+      for(let i=n-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[order[i],order[j]]=[order[j],order[i]]}
+      d=Array(n); order.forEach((stripIndex,rank)=>d[stripIndex]=rank);
+    } else d=[...Array(n).keys()];
+    const min=Math.min(...d); return d.map(x=>(x-min)*each);
+  }
+
+  // CSS math for each GSAP ease, written against a strip's time / in / out variables
+  function easeCss(k){
+    const T=`var(--strip-${k}-time)`, I=`var(--strip-${k}-in)`, O=`var(--strip-${k}-out)`;
+    switch(state.ease){
+      case 'none': return {expr:T, halves:false};
+      case 'power2.inOut': return {expr:`0.5 * ${I} * ${I} + 0.5 * (1 - (1 - ${O}) * (1 - ${O}))`, halves:true};
+      case 'power3.inOut': return {expr:`0.5 * ${I} * ${I} * ${I} + 0.5 * (1 - (1 - ${O}) * (1 - ${O}) * (1 - ${O}))`, halves:true};
+      case 'expo.out': return {expr:`(1 - pow(2, -10 * ${T})) * 1.000977`, halves:false};
+      case 'circ.inOut': return {expr:`0.5 * (1 - sqrt(1 - ${I} * ${I})) + 0.5 * sqrt(1 - (1 - ${O}) * (1 - ${O}))`, halves:true};
+      default: return {expr:`1 + 2.6 * (${T} - 1) * (${T} - 1) * (${T} - 1) + 1.6 * (${T} - 1) * (${T} - 1)`, halves:false};
+    }
+  }
+
+  function cssSnippetText(){
+    const n=state.n, w=100/n, F=state.feather/100, o=state.origin, scrub=state.mode==='scrub';
+    const duration=scrub?1:1.1;
+    const delays=staggerDelays(n,state.each,state.from);
+    const total=Math.max(...delays)+duration;          // whole timeline length
+    const span=duration/total;                          // one strip's share of 0 → 1
+    const L=[];
+    L.push(`/* Stripe mask reveal · pure CSS`);
+    L.push(`   ${n} strips · stagger ${state.each} from "${state.from}" · grows from ${o} · ease ${state.ease}${F>0?` · feather ${state.feather}%`:''} */`,'');
+    L.push('/* The only animated value. Registered so the browser can interpolate it. */');
+    L.push('@property --progress {','  syntax: "<number>";','  inherits: false;','  initial-value: 0;','}','');
+    if(scrub){
+      L.push('/* Tall scroll area. Its scroll position becomes the timeline. */');
+      L.push('.reveal-track {','  height: 300vh;','  view-timeline: --reveal-track block;','}','');
+      L.push('.reveal-sticky {','  position: sticky;','  top: 0;','  height: 100vh;','}','');
+    }
+    L.push('.reveal {');
+    L.push(`  /* Each strip: time = its own 0 → 1 slice of --progress (starts at its delay, lasts ${r4(span)})`);
+    L.push('     eased = time run through the ease, width = how much of the strip is visible */');
+    for(let i=0;i<n;i++){
+      const k=i+1, start=delays[i]/total, e=easeCss(k);
+      L.push(`  --strip-${k}-time: clamp(0, (var(--progress) - ${r4(start)}) / ${r4(span)}, 1);`);
+      if(e.halves){
+        L.push(`  --strip-${k}-in: clamp(0, 2 * var(--strip-${k}-time), 1);`);
+        L.push(`  --strip-${k}-out: clamp(0, 2 * var(--strip-${k}-time) - 1, 1);`);
+      }
+      L.push(`  --strip-${k}-eased: clamp(0, ${e.expr}, 1);`);
+      L.push(`  --strip-${k}-width: calc(${r4(w)}% * var(--strip-${k}-eased));`);
+      if(F>0){
+        const cap=o==='center'?`calc(var(--strip-${k}-width) / 2)`:`var(--strip-${k}-width)`;
+        L.push(`  --strip-${k}-feather: min(calc(${r4(F*w)}% * (1 - var(--strip-${k}-eased))), ${cap});`);
+      }
+      if(i<n-1) L.push('');
+    }
+    L.push('');
+    L.push(`  /* Grows from ${o}: ${o==='left'?'black is pinned to the strip start, its right edge moves right':o==='right'?'black is pinned to the strip end, its left edge moves left':'black sits in the strip centre, both edges move outward'} */`);
+    L.push('  mask-image: linear-gradient(90deg,');
+    for(let i=0;i<n;i++){
+      const k=i+1, A=r4(i*w)+'%', B=r4(i*w+w)+'%', W=`var(--strip-${k}-width)`, Fv=F>0?` - var(--strip-${k}-feather)`:'', Fp=F>0?` + var(--strip-${k}-feather)`:'';
+      let stops;
+      if(o==='left') stops=`#000 ${A}, #000 calc(${A} + ${W}${Fv}), transparent calc(${A} + ${W}), transparent ${B}`;
+      else if(o==='right') stops=`transparent ${A}, transparent calc(${B} - ${W}), #000 calc(${B} - ${W}${Fp}), #000 ${B}`;
+      else { const C=r4(i*w+w/2)+'%';
+        stops=`transparent ${A}, transparent calc(${C} - ${W} / 2), #000 calc(${C} - ${W} / 2${Fp}), #000 calc(${C} + ${W} / 2${Fv}), transparent calc(${C} + ${W} / 2), transparent ${B}`; }
+      L.push(`    /* strip ${k} */ ${stops}${i<n-1?',':''}`);
+    }
+    L.push('  );');
+    L.push('  mask-size: 100% 100%;','  mask-repeat: no-repeat;');
+    if(scrub){
+      L.push('','  /* Linear on purpose: the easing already happens per strip above */');
+      L.push('  animation: stripe-reveal linear both;');
+      L.push('  animation-timeline: --reveal-track;');
+      L.push('  animation-range: contain 0% contain 100%; /* track top hits viewport top → track bottom hits viewport bottom */');
+    }
+    L.push('}','');
+    if(!scrub){
+      L.push('/* Added by the observer below when the section enters the viewport */');
+      L.push(`.reveal.is-revealed {`,`  animation: stripe-reveal ${r4(total)}s linear forwards;`,'}','');
+    }
+    L.push('@keyframes stripe-reveal {','  from { --progress: 0; }','  to { --progress: 1; }','}','');
+    if(scrub){
+      L.push('/* Browsers without scroll-driven animations: show the image unmasked */');
+      L.push('@supports not (animation-timeline: view()) {','  .reveal { mask-image: none; }','}','');
+    }
+    L.push('@media (prefers-reduced-motion: reduce) {','  .reveal { animation: none; mask-image: none; }','}');
+    if(!scrub){
+      L.push('','/* JavaScript (the only part CSS cannot do: start on scroll-in, reverse on leave)');
+      L.push('const reveal = document.querySelector(".reveal");');
+      L.push('new IntersectionObserver(([entry]) => {');
+      L.push('  reveal.classList.toggle("is-revealed", entry.isIntersecting);');
+      L.push('}, { rootMargin: "0px 0px -45% 0px" }).observe(document.querySelector(".reveal-track"));');
+      L.push('*/');
+    }
+    return L.join('\n');
+  }
+
+  function snippetNote(){
+    if(codeView==='gsap') return 'Needs GSAP and ScrollTrigger. Works in every current browser.';
+    const fx = state.ease==='expo.out'||state.ease==='circ.inOut' ? ' This ease uses CSS pow() or sqrt() (browsers from 2023 on).' : '';
+    if(state.mode==='scrub') return 'No JavaScript. Scrubbing uses CSS scroll-driven animations (Chrome and Edge 115+, Safari 26+). Firefox gets the unmasked image through the @supports fallback.'+fx;
+    return 'All CSS except a 5-line IntersectionObserver that adds the class (included at the bottom, commented). Random order is fixed when generated.'+fx;
+  }
+
+  function renderSnippet(){
+    const text = codeView==='css' ? cssSnippetText() : snippetText();
+    $('snip').dataset.raw = text;
+    $('snip').innerHTML = esc(text).split('\n').map(line=>{
+      const t=line.trimStart();
+      if(t.startsWith('//')) return '<span class="c">'+line+'</span>';
+      const k=line.indexOf(' // ');
+      if(k>-1) return line.slice(0,k)+'<span class="c">'+line.slice(k)+'</span>';
+      return line;
+    }).join('\n')
+    // CSS block comments, including ones that span lines
+    .replace(/\/\*[\s\S]*?\*\//g, m=>'<span class="c">'+m.replace(/<\/?span[^>]*>/g,'')+'</span>');
+    $('snipNote').textContent = snippetNote();
+  }
   document.querySelectorAll('.seg').forEach(seg=>{
     seg.addEventListener('click',e=>{
       const btn=e.target.closest('button'); if(!btn) return;
       seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b===btn?'true':'false'));
+      if(seg.dataset.key==='codeView'){ codeView=btn.dataset.v; renderSnippet(); return; }
       state[seg.dataset.key]=btn.dataset.v;
       build();
     });
@@ -393,14 +568,14 @@ paint(); <span class="c">// start fully hidden</span>
   function debounce(fn,ms){let t;return()=>{clearTimeout(t);t=setTimeout(fn,ms)}}
   bindRange('n','n',v=>v);
   bindRange('each','each',v=>v.toFixed(2));
-  $('feather').addEventListener('input',e=>{state.feather=+e.target.value; $('featherOut').textContent=state.feather+'%'; paintAndReadout(); liveTick=0;});
+  $('feather').addEventListener('input',e=>{state.feather=+e.target.value; $('featherOut').textContent=state.feather+'%'; paintAndReadout(); liveTick=0; renderSnippet();});
   $('ease').addEventListener('change',e=>{state.ease=e.target.value; build();});
   $('replay').addEventListener('click',()=>tl&&tl.restart());
   $('reset').addEventListener('click',()=>{
     Object.assign(state,DEFAULTS);
     $('n').value=12;$('nOut').textContent=12;$('each').value=.08;$('eachOut').textContent='0.08';
     $('feather').value=0;$('featherOut').textContent='0%';$('ease').value=DEFAULTS.ease;
-    document.querySelectorAll('.seg').forEach(seg=>seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===DEFAULTS[seg.dataset.key]?'true':'false')));
+    document.querySelectorAll('.seg:not(.tabs)').forEach(seg=>seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===DEFAULTS[seg.dataset.key]?'true':'false')));
     build();
   });
 
@@ -415,7 +590,7 @@ paint(); <span class="c">// start fully hidden</span>
     setTimeout(()=>btn.textContent='Copy',1800);
   }
   $('copyLive').addEventListener('click',e=>copy(e.currentTarget,'mask-image: '+lastStr+';'));
-  $('copySnip').addEventListener('click',e=>copy(e.currentTarget,$('snip').textContent));
+  $('copySnip').addEventListener('click',e=>copy(e.currentTarget,$('snip').dataset.raw||$('snip').textContent));
 
   /* ---------- go ---------- */
   if(window.gsap && window.ScrollTrigger){
@@ -425,6 +600,7 @@ paint(); <span class="c">// start fully hidden</span>
     // Library failed to load: show the image fully so the page still reads
     img.style.maskImage=img.style.webkitMaskImage='none';
     live.textContent='GSAP did not load, so the animation is off.';
+    renderSnippet();
   }
 })();
 </script>
