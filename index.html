@@ -1,0 +1,432 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Stripe Mask Reveal</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: intro → tall scroll track with a sticky workbench (stage + controls) → how-it-works with the core snippet */
+:root{
+  --bg:#eef0f3; --surface:#ffffff; --sunk:#e3e6eb; --fg:#151922; --muted:#5d6574; --line:#c9ced8;
+  --accent:#2c55e0; --accent-ink:#ffffff; --code-bg:#151922; --code-fg:#dfe5f1;
+  --display:"Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --body:"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1218; --surface:#171b23; --sunk:#1d222c; --fg:#e7eaf0; --muted:#949cab; --line:#2c3341;
+  --accent:#7c9bff; --accent-ink:#0b0e14; --code-bg:#0a0d12; --code-fg:#d6dcea; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0f1218; --surface:#171b23; --sunk:#1d222c; --fg:#e7eaf0; --muted:#949cab; --line:#2c3341;
+  --accent:#7c9bff; --accent-ink:#0b0e14; --code-bg:#0a0d12; --code-fg:#d6dcea; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg); color:var(--fg); font-family:var(--body); font-size:15px; line-height:1.55;
+  padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px));}
+.wrap{max-width:1240px; margin:0 auto}
+header.intro{padding-block:48px 28px; display:grid; gap:12px}
+.eyebrow{font-family:var(--mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+h1{font-family:var(--display); font-weight:700; font-size:clamp(30px,5vw,52px); line-height:1.02; margin:0; text-wrap:balance; letter-spacing:-.02em}
+.intro p{margin:0; max-width:62ch; color:var(--muted)}
+.intro p strong{color:var(--fg); font-weight:600}
+.cue{font-family:var(--mono); font-size:12px; color:var(--accent); display:flex; align-items:center; gap:8px}
+.cue::after{content:"↓"; animation:bob 1.6s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(4px)}}
+
+/* scroll track */
+#track{height:320vh; position:relative}
+.bench{position:sticky; top:env(safe-area-inset-top,0px);
+  height:calc(100svh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+  display:grid; grid-template-columns:minmax(0,1fr) 330px; gap:20px; padding-block:16px}
+.stage{min-width:0; min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr) auto; gap:10px}
+.hud{display:flex; flex-wrap:wrap; gap:6px 16px; font-family:var(--mono); font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums}
+.hud b{color:var(--fg); font-weight:500}
+.pbar{height:3px; background:var(--sunk); border-radius:2px; overflow:hidden; flex:1 1 120px; align-self:center}
+.pbar i{display:block; height:100%; width:100%; background:var(--accent); transform-origin:left; transform:scaleX(0)}
+.box{container-type:size; min-height:0; display:grid; place-items:center}
+.frame{position:relative; width:min(100cqw, 160cqh); aspect-ratio:16/10; max-width:100%; border-radius:6px; overflow:hidden;
+  background-color:var(--sunk);
+  background-image:linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size:calc(100% / var(--n,12)) 100%;}
+.frame .ghost{position:absolute; inset:0; display:grid; place-items:center; font-family:var(--mono); font-size:12px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase}
+#masked{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; -webkit-mask-size:100% 100%; mask-size:100% 100%;
+  -webkit-mask-image:linear-gradient(transparent,transparent); mask-image:linear-gradient(transparent,transparent)}
+.meters{display:flex; gap:2px; height:28px; align-items:flex-end}
+.meters span{flex:1; height:100%; background:var(--sunk); border-radius:2px; position:relative; overflow:hidden}
+.meters span i{position:absolute; inset:0; background:var(--accent); transform-origin:bottom; transform:scaleY(0)}
+
+/* controls */
+.panel{min-width:0; min-height:0; overflow-y:auto; background:var(--surface); border:1px solid var(--line); border-radius:8px;
+  padding:18px; display:flex; flex-direction:column; gap:18px}
+.panel h2{font-family:var(--display); font-weight:500; font-size:17px; margin:0}
+.field{display:grid; gap:7px}
+.field > label, .field > .lbl{display:flex; justify-content:space-between; font-size:12px; font-weight:500; color:var(--muted); text-transform:uppercase; letter-spacing:.06em}
+.field output{font-family:var(--mono); color:var(--fg); text-transform:none; letter-spacing:0; font-variant-numeric:tabular-nums}
+input[type=range]{width:100%; accent-color:var(--accent)}
+select{font:inherit; font-size:14px; padding:7px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg)}
+.seg{display:flex; flex-wrap:wrap; gap:4px; background:var(--sunk); padding:3px; border-radius:7px}
+.seg button{flex:1 1 auto; font:inherit; font-size:13px; padding:6px 8px; border:0; border-radius:5px; background:transparent; color:var(--muted); cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface); color:var(--fg); box-shadow:0 1px 2px rgb(0 0 0 / .12); font-weight:500}
+button:focus-visible, select:focus-visible, input:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.btn{font:inherit; font-size:13px; font-weight:500; padding:8px 12px; border-radius:6px; border:0; background:var(--accent); color:var(--accent-ink); cursor:pointer}
+.btn.ghosty{background:transparent; color:var(--fg); border:1px solid var(--line)}
+.btn[hidden]{display:none}
+.out{display:grid; gap:7px}
+.out pre{margin:0; max-height:130px; overflow:auto; background:var(--code-bg); color:var(--code-fg); font-family:var(--mono); font-size:11px; line-height:1.5; padding:10px; border-radius:6px; white-space:pre-wrap; word-break:break-all}
+.row{display:flex; gap:8px; align-items:center; justify-content:space-between}
+
+/* after */
+section.how{padding-block:56px 72px; display:grid; gap:20px}
+section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px,3.4vw,34px); margin:0; letter-spacing:-.015em; text-wrap:balance}
+.cols{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:28px; align-items:start}
+.points{display:grid; gap:16px; max-width:62ch}
+.points h3{font-size:15px; margin:0 0 4px; font-weight:600}
+.points p{margin:0; color:var(--muted)}
+.points code, p code{font-family:var(--mono); font-size:.9em; background:var(--sunk); padding:1px 5px; border-radius:4px; color:var(--fg)}
+.snippet{position:relative; min-width:0}
+.snippet pre{margin:0; overflow-x:auto; background:var(--code-bg); color:var(--code-fg); font-family:var(--mono); font-size:12.5px; line-height:1.6; padding:18px; border-radius:8px}
+.snippet .btn{position:absolute; top:10px; right:10px; padding:5px 10px; font-size:12px}
+.c{color:#7f8aa3}
+
+@media (max-width:820px){
+  .bench{grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1.05fr) minmax(0,1fr); gap:12px; padding-block:10px}
+  .panel{padding:14px; gap:14px}
+  .cols{grid-template-columns:minmax(0,1fr)}
+}
+@media (prefers-reduced-motion: reduce){ .cue::after{animation:none} }
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <span class="eyebrow">CSS mask · GSAP ScrollTrigger · stagger</span>
+    <h1>Stripe mask reveal</h1>
+    <p>One <strong>mask-image</strong>, one linear-gradient. GSAP staggers an array of plain numbers, one per strip, and every frame rewrites the gradient's hard stops from them. Scroll to scrub it, and change the settings on the right while you watch.</p>
+    <span class="cue">Scroll to reveal</span>
+  </header>
+</div>
+
+<div id="track">
+  <div class="wrap bench">
+    <div class="stage">
+      <div class="hud">
+        <span>scroll <b id="hudP">0%</b></span>
+        <span class="pbar"><i id="hudBar"></i></span>
+        <span><b id="hudN">12</b> strips</span>
+        <span>from <b id="hudFrom">start</b></span>
+      </div>
+      <div class="box">
+        <div class="frame" id="frame">
+          <div class="ghost">masked area</div>
+          <img id="masked" alt="Generated dusk landscape revealed through vertical strips">
+        </div>
+      </div>
+      <div class="meters" id="meters" aria-hidden="true"></div>
+    </div>
+
+    <aside class="panel" aria-label="Animation settings">
+      <h2>Settings</h2>
+
+      <div class="field">
+        <span class="lbl">Trigger</span>
+        <div class="seg" data-key="mode">
+          <button type="button" id="mode-scrub" data-v="scrub" aria-pressed="true">Scrub with scroll</button>
+          <button type="button" id="mode-play" data-v="play" aria-pressed="false">Play on enter</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="n">Strips <output id="nOut">12</output></label>
+        <input type="range" id="n" min="3" max="32" step="1" value="12">
+      </div>
+
+      <div class="field">
+        <label for="each">Stagger each <output id="eachOut">0.08</output></label>
+        <input type="range" id="each" min="0" max="0.25" step="0.01" value="0.08">
+      </div>
+
+      <div class="field">
+        <span class="lbl">Stagger from</span>
+        <div class="seg" data-key="from">
+          <button type="button" id="from-start" data-v="start" aria-pressed="true">Start</button>
+          <button type="button" id="from-center" data-v="center" aria-pressed="false">Center</button>
+          <button type="button" id="from-edges" data-v="edges" aria-pressed="false">Edges</button>
+          <button type="button" id="from-end" data-v="end" aria-pressed="false">End</button>
+          <button type="button" id="from-random" data-v="random" aria-pressed="false">Random</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="lbl">Each strip grows from</span>
+        <div class="seg" data-key="origin">
+          <button type="button" id="origin-left" data-v="left" aria-pressed="true">Left</button>
+          <button type="button" id="origin-center" data-v="center" aria-pressed="false">Center</button>
+          <button type="button" id="origin-right" data-v="right" aria-pressed="false">Right</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="ease">Ease (per strip)</label>
+        <select id="ease">
+          <option value="none">none (linear)</option>
+          <option value="power2.inOut">power2.inOut</option>
+          <option value="power3.inOut" selected>power3.inOut</option>
+          <option value="expo.out">expo.out</option>
+          <option value="circ.inOut">circ.inOut</option>
+          <option value="back.out(1.6)">back.out(1.6)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="feather">Feathered leading edge <output id="featherOut">0%</output></label>
+        <input type="range" id="feather" min="0" max="100" step="5" value="0">
+      </div>
+
+      <div class="row">
+        <button type="button" class="btn" id="replay" hidden>Replay</button>
+        <button type="button" class="btn ghosty" id="reset">Reset settings</button>
+      </div>
+
+      <div class="out">
+        <div class="row"><span class="eyebrow">Live mask-image</span><button type="button" class="btn ghosty" id="copyLive" style="padding:4px 9px;font-size:12px">Copy</button></div>
+        <pre id="live"></pre>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="wrap">
+  <section class="how">
+    <span class="eyebrow">How it works</span>
+    <h2>GSAP staggers numbers, CSS paints them</h2>
+    <div class="cols">
+      <div class="points">
+        <div>
+          <h3>1. One object per strip</h3>
+          <p>GSAP can tween any object, not only elements. <code>strips</code> is an array of <code>{ v: 0 }</code>. Passing the whole array to <code>tl.to()</code> with <code>stagger</code> gives every strip its own delayed, eased progress from 0 to 1.</p>
+        </div>
+        <div>
+          <h3>2. Rewrite the gradient every frame</h3>
+          <p>In the timeline's <code>onUpdate</code>, each strip becomes two hard stops: black from the slot's start to <code>start + width × v</code>, then transparent to the slot's end. Black shows the image and transparent hides it.</p>
+        </div>
+        <div>
+          <h3>3. ScrollTrigger drives the timeline</h3>
+          <p>With <code>scrub</code>, scroll position sets the timeline's progress, so reversing the scroll reverses the reveal. Swap it for <code>toggleActions</code> to play once when the section enters.</p>
+        </div>
+        <div>
+          <h3>Why not animate a CSS variable?</h3>
+          <p>The pure-CSS version needs one <code>clamp()</code> per strip and a linear timeline. Doing the stagger in GSAP gives you real per-strip easing, <code>from: "center"</code> or <code>"random"</code> ordering, and any strip count, with the same single mask.</p>
+        </div>
+      </div>
+      <div class="snippet">
+        <button type="button" class="btn ghosty" id="copySnip">Copy</button>
+<pre id="snip"><span class="c">// &lt;script src="gsap.min.js"&gt; + ScrollTrigger.min.js</span>
+gsap.registerPlugin(ScrollTrigger);
+
+const el = document.querySelector(".reveal");
+const N = 12;
+const strips = Array.from({ length: N }, () =&gt; ({ v: 0 }));
+
+function paint() {
+  const w = 100 / N;
+  const stops = strips.map((s, i) =&gt; {
+    const a = i * w, b = a + w;
+    const r = a + w * Math.min(1, Math.max(0, s.v));
+    return `#000 ${a}%, #000 ${r}%, transparent ${r}%, transparent ${b}%`;
+  });
+  const g = `linear-gradient(90deg, ${stops.join(", ")})`;
+  el.style.webkitMaskImage = el.style.maskImage = g;
+}
+
+gsap.timeline({
+  scrollTrigger: {
+    trigger: ".reveal-track",
+    start: "top top",
+    end: "bottom bottom",
+    scrub: 0.6
+  },
+  onUpdate: paint
+})
+.to(strips, {
+  v: 1,
+  duration: 1,
+  ease: "power3.inOut",
+  stagger: { each: 0.08, from: "start" }
+});
+
+paint(); <span class="c">// start fully hidden</span>
+
+<span class="c">/* CSS */</span>
+<span class="c">/* .reveal { mask-size: 100% 100%; mask-repeat: no-repeat; } */</span></pre>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script>
+(function(){
+  /* ---------- generated image (no external assets allowed) ---------- */
+  function makeImage(){
+    const W=1600,H=1000,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+    const sky=x.createLinearGradient(0,0,0,H);
+    sky.addColorStop(0,'#1b1f4a');sky.addColorStop(.45,'#5b3a78');sky.addColorStop(.72,'#e0705a');sky.addColorStop(1,'#f6c27a');
+    x.fillStyle=sky;x.fillRect(0,0,W,H);
+    // stars
+    let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
+    x.fillStyle='rgba(255,255,255,.7)';
+    for(let i=0;i<160;i++){const sx=rnd()*W,sy=rnd()*H*.45;x.globalAlpha=.25+rnd()*.6;x.fillRect(sx,sy,1.6,1.6)}
+    x.globalAlpha=1;
+    // sun
+    const sg=x.createRadialGradient(1060,600,10,1060,600,260);
+    sg.addColorStop(0,'rgba(255,236,190,1)');sg.addColorStop(.45,'rgba(255,200,140,.9)');sg.addColorStop(1,'rgba(255,170,120,0)');
+    x.fillStyle=sg;x.beginPath();x.arc(1060,600,260,0,Math.PI*2);x.fill();
+    x.fillStyle='#fff1d6';x.beginPath();x.arc(1060,600,92,0,Math.PI*2);x.fill();
+    // ridges
+    const ridges=[
+      {y:.62,amp:90,col:'#7a4a7c',f:[.004,.011,.023]},
+      {y:.70,amp:80,col:'#4f3566',f:[.006,.013,.031]},
+      {y:.79,amp:60,col:'#2e2650',f:[.005,.017,.04]},
+      {y:.89,amp:40,col:'#17163a',f:[.008,.021,.05]}
+    ];
+    ridges.forEach((r,k)=>{
+      x.fillStyle=r.col;x.beginPath();x.moveTo(0,H);
+      for(let px=0;px<=W;px+=8){
+        const yy=H*r.y - r.amp*(Math.sin(px*r.f[0]+k*2)*.6+Math.sin(px*r.f[1]+k)*.3+Math.sin(px*r.f[2]+k*5)*.1);
+        x.lineTo(px,yy);
+      }
+      x.lineTo(W,H);x.closePath();x.fill();
+    });
+    // grain
+    const id=x.getImageData(0,0,W,H),d=id.data;
+    for(let i=0;i<d.length;i+=4){const n=(rnd()-.5)*14;d[i]+=n;d[i+1]+=n;d[i+2]+=n}
+    x.putImageData(id,0,0);
+    return c.toDataURL('image/jpeg',.88);
+  }
+  const img=document.getElementById('masked');
+  img.src=makeImage();
+
+  /* ---------- state ---------- */
+  const DEFAULTS={mode:'scrub',n:12,each:0.08,from:'start',origin:'left',ease:'power3.inOut',feather:0};
+  const state=Object.assign({},DEFAULTS);
+  const $=id=>document.getElementById(id);
+  const frame=$('frame'), meters=$('meters'), live=$('live');
+  let strips=[], meterEls=[], tl=null, lastStr='';
+
+  const f=v=>(Math.round(v*1000)/1000)+'%';
+
+  function paint(){
+    const n=strips.length, w=100/n, stops=[];
+    const fMax=state.feather/100*w;
+    for(let i=0;i<n;i++){
+      const v=Math.min(1,Math.max(0,strips[i].v));
+      const a=i*w, b=a+w, vis=w*v;
+      const fw=Math.min(fMax*(1-v), state.origin==='center'?vis/2:vis);
+      if(state.origin==='left'){
+        const R=a+vis;
+        stops.push('#000 '+f(a), '#000 '+f(R-fw), 'transparent '+f(R), 'transparent '+f(b));
+      }else if(state.origin==='right'){
+        const L=b-vis;
+        stops.push('transparent '+f(a), 'transparent '+f(L), '#000 '+f(L+fw), '#000 '+f(b));
+      }else{
+        const m=a+w/2, L=m-vis/2, R=m+vis/2;
+        stops.push('transparent '+f(a), 'transparent '+f(L), '#000 '+f(L+fw), '#000 '+f(R-fw), 'transparent '+f(R), 'transparent '+f(b));
+      }
+      if(meterEls[i]) meterEls[i].style.transform='scaleY('+v+')';
+    }
+    const g='linear-gradient(90deg, '+stops.join(', ')+')';
+    img.style.webkitMaskImage=g; img.style.maskImage=g;
+    lastStr=g;
+  }
+  // throttle the text readout so it stays cheap
+  let liveTick=0;
+  function paintAndReadout(){
+    paint();
+    const now=performance.now();
+    if(now-liveTick>120){liveTick=now; live.textContent='mask-image: '+lastStr.replace(/, (?=#000|transparent)/g,',\n  ')+';'}
+  }
+
+  function buildMeters(){
+    meters.innerHTML='';meterEls=[];
+    for(let i=0;i<state.n;i++){const s=document.createElement('span'),b=document.createElement('i');s.appendChild(b);meters.appendChild(s);meterEls.push(b)}
+    frame.style.setProperty('--n',state.n);
+  }
+
+  function hud(p){
+    $('hudP').textContent=Math.round(p*100)+'%';
+    $('hudBar').style.transform='scaleX('+p+')';
+  }
+
+  function build(){
+    if(tl){ if(tl.scrollTrigger) tl.scrollTrigger.kill(); tl.kill(); }
+    strips=Array.from({length:state.n},()=>({v:0}));
+    buildMeters();
+    $('hudN').textContent=state.n; $('hudFrom').textContent=state.from;
+    const base={trigger:'#track', onUpdate:self=>hud(self.progress)};
+    const st = state.mode==='scrub'
+      ? Object.assign(base,{start:'top top', end:'bottom bottom', scrub:0.6})
+      : Object.assign(base,{start:'top 55%', end:'bottom bottom', toggleActions:'play none none reverse'});
+    tl=gsap.timeline({scrollTrigger:st, onUpdate:paintAndReadout});
+    tl.to(strips,{v:1, duration:state.mode==='scrub'?1:1.1, ease:state.ease, stagger:{each:state.each, from:state.from}});
+    $('replay').hidden = state.mode!=='play';
+    paintAndReadout(); liveTick=0;
+    ScrollTrigger.refresh();
+  }
+
+  /* ---------- controls ---------- */
+  document.querySelectorAll('.seg').forEach(seg=>{
+    seg.addEventListener('click',e=>{
+      const btn=e.target.closest('button'); if(!btn) return;
+      seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b===btn?'true':'false'));
+      state[seg.dataset.key]=btn.dataset.v;
+      build();
+    });
+  });
+  function bindRange(id,key,fmt){
+    const el=$(id), out=$(id+'Out');
+    el.addEventListener('input',()=>{state[key]=parseFloat(el.value); out.textContent=fmt(state[key]);});
+    el.addEventListener('change',build);
+    el.addEventListener('input',debounce(build,140));
+  }
+  function debounce(fn,ms){let t;return()=>{clearTimeout(t);t=setTimeout(fn,ms)}}
+  bindRange('n','n',v=>v);
+  bindRange('each','each',v=>v.toFixed(2));
+  $('feather').addEventListener('input',e=>{state.feather=+e.target.value; $('featherOut').textContent=state.feather+'%'; paintAndReadout(); liveTick=0;});
+  $('ease').addEventListener('change',e=>{state.ease=e.target.value; build();});
+  $('replay').addEventListener('click',()=>tl&&tl.restart());
+  $('reset').addEventListener('click',()=>{
+    Object.assign(state,DEFAULTS);
+    $('n').value=12;$('nOut').textContent=12;$('each').value=.08;$('eachOut').textContent='0.08';
+    $('feather').value=0;$('featherOut').textContent='0%';$('ease').value=DEFAULTS.ease;
+    document.querySelectorAll('.seg').forEach(seg=>seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===DEFAULTS[seg.dataset.key]?'true':'false')));
+    build();
+  });
+
+  function copy(btn,text){
+    const done=()=>{const o=btn.textContent;btn.textContent='Copied';setTimeout(()=>btn.textContent=o,1200)};
+    try{ navigator.clipboard.writeText(text).then(done,()=>select(btn)); }catch(e){ select(btn); }
+  }
+  function select(btn){
+    const pre=btn.closest('.out,.snippet').querySelector('pre');
+    const r=document.createRange(); r.selectNodeContents(pre); const s=getSelection(); s.removeAllRanges(); s.addRange(r);
+    btn.textContent='Selected, press Ctrl+C';
+    setTimeout(()=>btn.textContent='Copy',1800);
+  }
+  $('copyLive').addEventListener('click',e=>copy(e.currentTarget,'mask-image: '+lastStr+';'));
+  $('copySnip').addEventListener('click',e=>copy(e.currentTarget,$('snip').textContent));
+
+  /* ---------- go ---------- */
+  if(window.gsap && window.ScrollTrigger){
+    gsap.registerPlugin(ScrollTrigger);
+    build();
+  }else{
+    // Library failed to load: show the image fully so the page still reads
+    img.style.maskImage=img.style.webkitMaskImage='none';
+    live.textContent='GSAP did not load, so the animation is off.';
+  }
+})();
+</script>
+
+</body></html>
