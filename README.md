@@ -31,7 +31,7 @@ Feathered leading edge 0%
 Live mask-image
 
 ```
-
+mask-image: linear-gradient(90deg, #000 0%, #000 8.333%, transparent 8.333%, transparent 8.333%, #000 8.333%, #000 16.667%, transparent 16.667%, transparent 16.667%, #000 16.667%, #000 25%, transparent 25%, transparent 25%, #000 25%, #000 33.333%, transparent 33.333%, transparent 33.333%, #000 33.333%, #000 41.667%, transparent 41.667%, transparent 41.667%, #000 41.667%, #000 50%, transparent 50%, transparent 50%, #000 50%, #000 58.333%, transparent 58.333%, transparent 58.333%, #000 58.333%, #000 66.667%, transparent 66.667%, transparent 66.667%, #000 66.667%, #000 75%, transparent 75%, transparent 75%, #000 75%, #000 83.333%, transparent 83.333%, transparent 83.333%, #000 83.333%, #000 91.667%, transparent 91.667%, transparent 91.667%, #000 91.667%, #000 100%, transparent 100%, transparent 100%);
 ```
 
 How it works
