@@ -1,241 +1,164 @@
 # Stripe Mask Reveal Generator
 
-One **mask-image**, one linear-gradient. GSAP staggers an array of plain numbers, one per strip, and every frame rewrites the gradient's hard stops from them. Scroll to scrub it, and change the settings on the right while you watch.
+A browser tool for designing a staggered "stripe" image reveal: the image appears through a set of columns or rows that open one after another. You tune the animation in a live preview, then copy production code in one of three implementations:
 
-## Settings
+| Output | Stack | Best for |
+|---|---|---|
+| **GSAP + mask** | GSAP, ScrollTrigger, CSS `mask-image` | Most projects. Works in every current browser, any strip count, real per-strip easing. |
+| **Pure CSS `clamp()`** | CSS only (plus a tiny IntersectionObserver for "play on enter") | No-library builds. Scrubbing needs CSS scroll-driven animations. |
+| **GSAP + Canvas** | GSAP, ScrollTrigger, Canvas 2D | Identical rendering in every browser and per-pixel control. |
 
-Trigger: `Scrub with scroll`
+Every setting in the panel updates the preview and all three code outputs at the same time.
 
-Strips: `12`
+---
 
-Stagger each: `0.08`
+## Features
 
-Stagger from: `Start`
+- **Live preview** that scrubs with the page scroll (single mode) or inside a scrollable box with GSAP markers (multiple mode).
+- **One mask, no extra DOM.** The reveal is a single `linear-gradient` mask on the image. There are no cloned slices or wrapper elements per strip.
+- **Three code generators** (GSAP + mask, pure CSS, GSAP + canvas) with readable variable names and comments that explain each choice.
+- **Copy buttons** for the generated code and for the current live `mask-image` value.
+- **Single or multiple instances.** Generate code for one pinned hero image or for every matching image on a page, each with its own trigger.
+- **GSAP `clamp()` on start and end** so images already in view on page load start fully hidden.
+- **Horizontal or vertical stripes** (columns or rows).
+- **Scrub or play on enter**, with a per-strip duration for play mode.
+- **2 to 500 strips.**
+- **Feathered leading edge** for a soft wipe.
+- **Accessible defaults.** Generated code respects `prefers-reduced-motion` by showing the image without animation.
+- **Light and dark themes**, and a layout that works on phones.
 
-Each strip grows from: `Left`
+---
 
-Ease (per strip): `power3.inOut`
+## Settings reference
 
-Feathered leading edge: `0%`
+| Setting | Values | What it does |
+|---|---|---|
+| **Instances** | Single, pinned / Multiple | Single: one image inside a tall, sticky scroll track. Multiple: every `.reveal` (or `.reveal-canvas`) on the page gets its own ScrollTrigger. |
+| **Stripe direction** | Horizontal ⇢ columns / Vertical ⇣ rows | Sets the gradient angle: `90deg` for columns, `180deg` for rows. Nothing else changes, because gradient stop positions are measured along the gradient line. |
+| **Trigger** | Scrub with scroll / Play on enter | Scrub ties progress to scroll position (`scrub: 0.6`). Play runs once on enter and reverses when scrolled back above (`toggleActions: "play none none reverse"`). |
+| **Start / End** *(multiple only)* | Element edge (top, center, bottom) + viewport % (0–100) | ScrollTrigger positions such as `"top 85%"`: the element's top edge meets a line 85% down the viewport. End is hidden in play mode because playing only needs a start. |
+| **Wrap in `clamp()`** *(multiple only)* | On / Off | Wraps positions as `"clamp(top 85%)"`. Keeps them inside the page's scroll range, so an image already past its start line on load starts at 0% instead of part-way revealed. |
+| **Duration per strip** *(play only)* | 0.1–5 s | How long each strip takes. The panel shows when the last strip finishes. |
+| **Strips** | 2–500 (whole number) | Number of columns or rows. Invalid input is flagged and snapped back into range when you leave the box. |
+| **Stagger each** | 0.00–1.00 | Gap between strip starts. In scrub mode it is relative to one strip's duration; in play mode it is seconds. |
+| **Stagger from** | Start / Center / Edges / End / Random | Order the strips start in, using GSAP's stagger `from` rules. |
+| **Each strip grows from** | Left, Center, Right (Top, Center, Bottom for rows) | Where the visible part sits inside each strip as it opens. |
+| **Ease (per strip)** | none, power2.inOut, power3.inOut, expo.out, circ.inOut, back.out(1.6) | Applied to each strip separately, not to the whole timeline. |
+| **Feathered leading edge** | 0–100% of a strip | Softens the moving edge. The softness shrinks to zero as each strip completes, so no seams remain. |
 
-## GSAP staggers numbers, CSS paints them
+---
 
-### 1. One object per strip
+## How it works
 
-GSAP can tween any object, not only elements. `strips` is an array of `{ progress: 0 }`. Passing the whole array to `tl.to()` with `stagger` gives every strip its own delayed, eased progress from 0 to 1.
+### The shared idea
 
-### 2. Rewrite the gradient every frame
+Each strip owns a slot: `stripStart` to `stripEnd`, as a percentage of the width (columns) or height (rows). Every frame, each strip has a `progress` from 0 to 1. Its visible size is:
 
-In the timeline's `onUpdate`, `paintMask()` turns each strip into hard stops: black from `stripStart` to `stripStart + stripWidth × progress`, then transparent to the slot's end. Black shows the image and transparent hides it.
+```
+revealedSize = stripSize × progress
+```
 
-### 3. ScrollTrigger drives the timeline
+"Grows from" only decides where that visible part sits inside the slot:
 
-With `scrub`, scroll position sets the timeline's progress, so reversing the scroll reverses the reveal. Swap it for `toggleActions` to play once when the section enters.
+```
+Left / Top     |■■■■■■······|   pinned to stripStart, the far edge moves forward
+Center         |···■■■■■■···|   centred, both edges move outward
+Right / Bottom |······■■■■■■|   pinned to stripEnd, the near edge moves back
+```
 
-## Why not animate a CSS variable?
+### GSAP + mask
 
-The pure-CSS version needs one `clamp()` per strip and a linear timeline. Doing the stagger in GSAP gives you real per-strip easing, `from: "center"` or `"random"` ordering, and any strip count, with the same single mask.
-
-## Code for your current settings
-
-### GSAP + ScrollTrigger Version
-
-Needs GSAP and ScrollTrigger. Works in every current browser.
-
+- `strips` is an array of plain objects, `{ progress: 0 }`. GSAP can tween any object, so `.to(strips, { progress: 1, stagger: { each, from } })` gives every strip its own delayed, eased progress.
+- On each timeline update, `paintMask()` converts the strips into gradient hard stops and writes one `mask-image`. Black areas show the image; transparent areas hide it.
+- Two stops at the same position with different colours (`#000 40%, transparent 40%`) create a crisp edge with no blend.
 
 ```js
-// <script src="gsap.min.js"> + ScrollTrigger.min.js
-gsap.registerPlugin(ScrollTrigger);
+function createMaskReveal(revealElement, scrollTrigger) { /* strips, paintMask, timeline */ }
 
-const revealElement = document.querySelector(".reveal");
-const STRIP_COUNT = 12;
-
-// One plain object per strip. GSAP tweens each "progress" from 0 to 1.
-const strips = Array.from({ length: STRIP_COUNT }, () => ({ progress: 0 }));
-
-function paintMask() {
-  const stripWidth = 100 / STRIP_COUNT; // in %
-
-  const colorStops = strips.map((strip, index) => {
-    const stripStart = index * stripWidth;
-    const stripEnd = stripStart + stripWidth;
-    const progress = Math.min(1, Math.max(0, strip.progress)); // clamp eases that overshoot
-    const revealedWidth = stripWidth * progress;
-
-    // Each strip grows from: LEFT
-    // Visible part is pinned to stripStart and its right edge moves right.
-    const revealEnd = stripStart + revealedWidth;
-    return `#000 ${stripStart}%, #000 ${revealEnd}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;
-  });
-
-  const maskGradient = `linear-gradient(90deg, ${colorStops.join(", ")})`;
-  revealElement.style.webkitMaskImage = maskGradient;
-  revealElement.style.maskImage = maskGradient;
-}
-
-gsap.timeline({
-  scrollTrigger: {
-    trigger: ".reveal-track",
-    start: "top top",
-    end: "bottom bottom",
+// Multiple instances
+document.querySelectorAll(".reveal").forEach((revealElement) => {
+  createMaskReveal(revealElement, {
+    trigger: revealElement,
+    start: "clamp(top 85%)",
+    end: "clamp(center 50%)",
     scrub: 0.6
-  },
-  onUpdate: paintMask
-})
-.to(strips, {
-  progress: 1,
-  duration: 1,
-  ease: "power3.inOut",
-  stagger: { each: 0.08, from: "start" }
+  });
 });
-
-paintMask(); // start fully hidden
-
-/* CSS */
-/* .reveal { mask-size: 100% 100%; mask-repeat: no-repeat; } */
-/* .reveal-track { height: 300vh; }  put .reveal inside a position: sticky child */
-
 ```
 
-### Pure CSS clamp() Version
+### Pure CSS `clamp()`
 
-No JavaScript. Scrubbing uses CSS scroll-driven animations (Chrome and Edge 115+, Safari 26+). Firefox gets the unmasked image through the @supports fallback.
+- One registered property, `@property --progress`, animates from 0 to 1 on a **linear** timeline.
+- Each strip derives its own values from it:
+  - `--strip-N-time`: `clamp(0, (progress − start) / span, 1)`, the strip's own 0 → 1 slice. The start is computed from the same stagger rules GSAP uses.
+  - `--strip-N-eased`: GSAP's ease formula written as CSS math. The `inOut` eases are split into two clamped halves because CSS has no `if`.
+  - `--strip-N-size`: the visible size.
+- **Single scrub** uses a named `view-timeline` on `.reveal-track` with `animation-range: contain 0% contain 100%`, the same range as ScrollTrigger's `"top top"` to `"bottom bottom"`.
+- **Multiple scrub** uses `animation-timeline: view()`. GSAP-style positions are translated into `entry-crossing` offsets; for example, `"center 50%"` becomes `entry-crossing calc(50% + 50vh)`.
+- **Play on enter** adds an `.is-revealed` class from a short IntersectionObserver whose `rootMargin` and `threshold` match the start position.
 
+The animation keyframes stay linear on purpose: easing the keyframes would distort the stagger timing itself.
 
+### GSAP + Canvas
 
-```css
-/* Stripe mask reveal · pure CSS
-   12 strips · stagger 0.08 from "start" · grows from left · ease power3.inOut */
+- GSAP staggers the same `strips` array. On every update, `draw()`:
+  1. fills one black rectangle per strip (`fillBand`), plus a gradient rectangle for the feather (`fillFade`);
+  2. switches to `globalCompositeOperation = "source-in"` and draws the image, which then only appears inside the black bands. This is the canvas equivalent of a CSS mask.
+- Rectangles are rounded to whole canvas pixels, so neighbouring strips meet without anti-aliased seams.
+- The canvas renders at device-pixel resolution (capped at 2×), redraws on resize through a `ResizeObserver`, and scales the image like `object-fit: cover`.
 
-/* The only animated value. Registered so the browser can interpolate it. */
-@property --progress {
-  syntax: "<number>";
-  inherits: false;
-  initial-value: 0;
-}
+---
 
-/* Tall scroll area. Its scroll position becomes the timeline. */
-.reveal-track {
-  height: 300vh;
-  view-timeline: --reveal-track block;
-}
+## Using the generated code
 
-.reveal-sticky {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-}
+### Single, pinned (scrub)
 
-.reveal {
-  /* Each strip: time = its own 0 → 1 slice of --progress (starts at its delay, lasts 0.5319)
-     eased = time run through the ease, width = how much of the strip is visible */
-  --strip-1-time: clamp(0, (var(--progress) - 0) / 0.5319, 1);
-  --strip-1-in: clamp(0, 2 * var(--strip-1-time), 1);
-  --strip-1-out: clamp(0, 2 * var(--strip-1-time) - 1, 1);
-  --strip-1-eased: clamp(0, 0.5 * var(--strip-1-in) * var(--strip-1-in) * var(--strip-1-in) + 0.5 * (1 - (1 - var(--strip-1-out)) * (1 - var(--strip-1-out)) * (1 - var(--strip-1-out))), 1);
-  --strip-1-width: calc(8.3333% * var(--strip-1-eased));
-
-  --strip-2-time: clamp(0, (var(--progress) - 0.0426) / 0.5319, 1);
-  --strip-2-in: clamp(0, 2 * var(--strip-2-time), 1);
-  --strip-2-out: clamp(0, 2 * var(--strip-2-time) - 1, 1);
-  --strip-2-eased: clamp(0, 0.5 * var(--strip-2-in) * var(--strip-2-in) * var(--strip-2-in) + 0.5 * (1 - (1 - var(--strip-2-out)) * (1 - var(--strip-2-out)) * (1 - var(--strip-2-out))), 1);
-  --strip-2-width: calc(8.3333% * var(--strip-2-eased));
-
-  --strip-3-time: clamp(0, (var(--progress) - 0.0851) / 0.5319, 1);
-  --strip-3-in: clamp(0, 2 * var(--strip-3-time), 1);
-  --strip-3-out: clamp(0, 2 * var(--strip-3-time) - 1, 1);
-  --strip-3-eased: clamp(0, 0.5 * var(--strip-3-in) * var(--strip-3-in) * var(--strip-3-in) + 0.5 * (1 - (1 - var(--strip-3-out)) * (1 - var(--strip-3-out)) * (1 - var(--strip-3-out))), 1);
-  --strip-3-width: calc(8.3333% * var(--strip-3-eased));
-
-  --strip-4-time: clamp(0, (var(--progress) - 0.1277) / 0.5319, 1);
-  --strip-4-in: clamp(0, 2 * var(--strip-4-time), 1);
-  --strip-4-out: clamp(0, 2 * var(--strip-4-time) - 1, 1);
-  --strip-4-eased: clamp(0, 0.5 * var(--strip-4-in) * var(--strip-4-in) * var(--strip-4-in) + 0.5 * (1 - (1 - var(--strip-4-out)) * (1 - var(--strip-4-out)) * (1 - var(--strip-4-out))), 1);
-  --strip-4-width: calc(8.3333% * var(--strip-4-eased));
-
-  --strip-5-time: clamp(0, (var(--progress) - 0.1702) / 0.5319, 1);
-  --strip-5-in: clamp(0, 2 * var(--strip-5-time), 1);
-  --strip-5-out: clamp(0, 2 * var(--strip-5-time) - 1, 1);
-  --strip-5-eased: clamp(0, 0.5 * var(--strip-5-in) * var(--strip-5-in) * var(--strip-5-in) + 0.5 * (1 - (1 - var(--strip-5-out)) * (1 - var(--strip-5-out)) * (1 - var(--strip-5-out))), 1);
-  --strip-5-width: calc(8.3333% * var(--strip-5-eased));
-
-  --strip-6-time: clamp(0, (var(--progress) - 0.2128) / 0.5319, 1);
-  --strip-6-in: clamp(0, 2 * var(--strip-6-time), 1);
-  --strip-6-out: clamp(0, 2 * var(--strip-6-time) - 1, 1);
-  --strip-6-eased: clamp(0, 0.5 * var(--strip-6-in) * var(--strip-6-in) * var(--strip-6-in) + 0.5 * (1 - (1 - var(--strip-6-out)) * (1 - var(--strip-6-out)) * (1 - var(--strip-6-out))), 1);
-  --strip-6-width: calc(8.3333% * var(--strip-6-eased));
-
-  --strip-7-time: clamp(0, (var(--progress) - 0.2553) / 0.5319, 1);
-  --strip-7-in: clamp(0, 2 * var(--strip-7-time), 1);
-  --strip-7-out: clamp(0, 2 * var(--strip-7-time) - 1, 1);
-  --strip-7-eased: clamp(0, 0.5 * var(--strip-7-in) * var(--strip-7-in) * var(--strip-7-in) + 0.5 * (1 - (1 - var(--strip-7-out)) * (1 - var(--strip-7-out)) * (1 - var(--strip-7-out))), 1);
-  --strip-7-width: calc(8.3333% * var(--strip-7-eased));
-
-  --strip-8-time: clamp(0, (var(--progress) - 0.2979) / 0.5319, 1);
-  --strip-8-in: clamp(0, 2 * var(--strip-8-time), 1);
-  --strip-8-out: clamp(0, 2 * var(--strip-8-time) - 1, 1);
-  --strip-8-eased: clamp(0, 0.5 * var(--strip-8-in) * var(--strip-8-in) * var(--strip-8-in) + 0.5 * (1 - (1 - var(--strip-8-out)) * (1 - var(--strip-8-out)) * (1 - var(--strip-8-out))), 1);
-  --strip-8-width: calc(8.3333% * var(--strip-8-eased));
-
-  --strip-9-time: clamp(0, (var(--progress) - 0.3404) / 0.5319, 1);
-  --strip-9-in: clamp(0, 2 * var(--strip-9-time), 1);
-  --strip-9-out: clamp(0, 2 * var(--strip-9-time) - 1, 1);
-  --strip-9-eased: clamp(0, 0.5 * var(--strip-9-in) * var(--strip-9-in) * var(--strip-9-in) + 0.5 * (1 - (1 - var(--strip-9-out)) * (1 - var(--strip-9-out)) * (1 - var(--strip-9-out))), 1);
-  --strip-9-width: calc(8.3333% * var(--strip-9-eased));
-
-  --strip-10-time: clamp(0, (var(--progress) - 0.383) / 0.5319, 1);
-  --strip-10-in: clamp(0, 2 * var(--strip-10-time), 1);
-  --strip-10-out: clamp(0, 2 * var(--strip-10-time) - 1, 1);
-  --strip-10-eased: clamp(0, 0.5 * var(--strip-10-in) * var(--strip-10-in) * var(--strip-10-in) + 0.5 * (1 - (1 - var(--strip-10-out)) * (1 - var(--strip-10-out)) * (1 - var(--strip-10-out))), 1);
-  --strip-10-width: calc(8.3333% * var(--strip-10-eased));
-
-  --strip-11-time: clamp(0, (var(--progress) - 0.4255) / 0.5319, 1);
-  --strip-11-in: clamp(0, 2 * var(--strip-11-time), 1);
-  --strip-11-out: clamp(0, 2 * var(--strip-11-time) - 1, 1);
-  --strip-11-eased: clamp(0, 0.5 * var(--strip-11-in) * var(--strip-11-in) * var(--strip-11-in) + 0.5 * (1 - (1 - var(--strip-11-out)) * (1 - var(--strip-11-out)) * (1 - var(--strip-11-out))), 1);
-  --strip-11-width: calc(8.3333% * var(--strip-11-eased));
-
-  --strip-12-time: clamp(0, (var(--progress) - 0.4681) / 0.5319, 1);
-  --strip-12-in: clamp(0, 2 * var(--strip-12-time), 1);
-  --strip-12-out: clamp(0, 2 * var(--strip-12-time) - 1, 1);
-  --strip-12-eased: clamp(0, 0.5 * var(--strip-12-in) * var(--strip-12-in) * var(--strip-12-in) + 0.5 * (1 - (1 - var(--strip-12-out)) * (1 - var(--strip-12-out)) * (1 - var(--strip-12-out))), 1);
-  --strip-12-width: calc(8.3333% * var(--strip-12-eased));
-
-  /* Grows from left: black is pinned to the strip start, its right edge moves right */
-  mask-image: linear-gradient(90deg,
-    /* strip 1 */ #000 0%, #000 calc(0% + var(--strip-1-width)), transparent calc(0% + var(--strip-1-width)), transparent 8.3333%,
-    /* strip 2 */ #000 8.3333%, #000 calc(8.3333% + var(--strip-2-width)), transparent calc(8.3333% + var(--strip-2-width)), transparent 16.6667%,
-    /* strip 3 */ #000 16.6667%, #000 calc(16.6667% + var(--strip-3-width)), transparent calc(16.6667% + var(--strip-3-width)), transparent 25%,
-    /* strip 4 */ #000 25%, #000 calc(25% + var(--strip-4-width)), transparent calc(25% + var(--strip-4-width)), transparent 33.3333%,
-    /* strip 5 */ #000 33.3333%, #000 calc(33.3333% + var(--strip-5-width)), transparent calc(33.3333% + var(--strip-5-width)), transparent 41.6667%,
-    /* strip 6 */ #000 41.6667%, #000 calc(41.6667% + var(--strip-6-width)), transparent calc(41.6667% + var(--strip-6-width)), transparent 50%,
-    /* strip 7 */ #000 50%, #000 calc(50% + var(--strip-7-width)), transparent calc(50% + var(--strip-7-width)), transparent 58.3333%,
-    /* strip 8 */ #000 58.3333%, #000 calc(58.3333% + var(--strip-8-width)), transparent calc(58.3333% + var(--strip-8-width)), transparent 66.6667%,
-    /* strip 9 */ #000 66.6667%, #000 calc(66.6667% + var(--strip-9-width)), transparent calc(66.6667% + var(--strip-9-width)), transparent 75%,
-    /* strip 10 */ #000 75%, #000 calc(75% + var(--strip-10-width)), transparent calc(75% + var(--strip-10-width)), transparent 83.3333%,
-    /* strip 11 */ #000 83.3333%, #000 calc(83.3333% + var(--strip-11-width)), transparent calc(83.3333% + var(--strip-11-width)), transparent 91.6667%,
-    /* strip 12 */ #000 91.6667%, #000 calc(91.6667% + var(--strip-12-width)), transparent calc(91.6667% + var(--strip-12-width)), transparent 100%
-  );
-  mask-size: 100% 100%;
-  mask-repeat: no-repeat;
-
-  /* Linear on purpose: the easing already happens per strip above */
-  animation: stripe-reveal linear both;
-  animation-timeline: --reveal-track;
-  animation-range: contain 0% contain 100%; /* track top hits viewport top → track bottom hits viewport bottom */
-}
-
-@keyframes stripe-reveal {
-  from { --progress: 0; }
-  to { --progress: 1; }
-}
-
-/* Browsers without scroll-driven animations: show the image unmasked */
-@supports not (animation-timeline: view()) {
-  .reveal { mask-image: none; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .reveal { animation: none; mask-image: none; }
-}
+```html
+<div class="reveal-track">          <!-- tall: e.g. height: 300vh -->
+  <div class="reveal-sticky">       <!-- position: sticky; top: 0; height: 100vh -->
+    <img class="reveal" src="photo.jpg" alt="…">
+  </div>
+</div>
 ```
+
+### Multiple instances
+
+```html
+<img class="reveal" src="photo-1.jpg" alt="…">
+<img class="reveal" src="photo-2.jpg" alt="…">
+```
+
+For the canvas version, replace each image with:
+
+```html
+<canvas class="reveal-canvas" data-src="photo.jpg" role="img" aria-label="Describe the photo"></canvas>
+```
+
+### In Webflow
+
+1. Add the GSAP and ScrollTrigger scripts in **Page settings → Before `</body>` tag** (not needed for the pure-CSS scrub version).
+2. Give the image the `reveal` class (or use a canvas Embed for the canvas version).
+3. For single mode, give the wrapper the `reveal-track` class and a tall height, and make the inner wrapper sticky.
+4. Paste the generated JS into the same custom code area, after the GSAP scripts. Paste generated CSS into an Embed `<style>` block.
+
+---
+
+## Browser support
+
+| Version | Support |
+|---|---|
+| GSAP + mask | All current browsers (unprefixed `mask-image`: Chrome 120+, Safari 15.4+, Firefox 53+). |
+| GSAP + Canvas | All current browsers. |
+| Pure CSS, play on enter | All current browsers. `expo.out` and `circ.inOut` need CSS `pow()` / `sqrt()` (2023+ browsers). |
+| Pure CSS, scrub | CSS scroll-driven animations: Chrome and Edge 115+, Safari 26+. Firefox gets the unmasked image through an `@supports` fallback. |
+
+---
+
+## Known limits
+
+- **Pure CSS at high strip counts** produces one block of custom properties per strip, so 500 strips is a very long stylesheet. The GSAP versions stay the same size at any count.
+- **GSAP `clamp()` has no CSS equivalent.** In the pure-CSS multiple-instance version, an element already past its start line on load begins part-way revealed.
+- **Random order** is fixed when the CSS is generated. The GSAP versions reshuffle on every page load.
+- **Overshooting eases** (`back.out`) are clamped at 100%, so a strip never grows past its slot.
+- **Canvas trade-off:** the image becomes pixels, so you lose native `<img>` features such as `srcset`, lazy loading and text alternatives (use `role="img"` and `aria-label` instead).
+- **Preview images** are generated in the browser, because the tool can't load outside images. In your project, use your own photos.

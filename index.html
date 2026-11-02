@@ -49,6 +49,7 @@ h1{font-family:var(--display); font-weight:700; font-size:clamp(30px,5vw,52px); 
   background-color:var(--sunk);
   background-image:linear-gradient(90deg, var(--line) 1px, transparent 1px);
   background-size:calc(100% / var(--n,12)) 100%;}
+.frame.rows{background-image:linear-gradient(180deg, var(--line) 1px, transparent 1px); background-size:100% calc(100% / var(--n,12))}
 .frame .ghost{position:absolute; inset:0; display:grid; place-items:center; font-family:var(--mono); font-size:12px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase}
 #masked{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block;
   -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; -webkit-mask-size:100% 100%; mask-size:100% 100%;
@@ -101,12 +102,43 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
 }
 @media (prefers-reduced-motion: reduce){ .cue::after{animation:none} }
 </style>
+<style>
+/* additions: number input, position pickers, multi-instance preview */
+[hidden]{display:none!important}
+.masked{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; -webkit-mask-size:100% 100%; mask-size:100% 100%;
+  -webkit-mask-image:linear-gradient(transparent,transparent); mask-image:linear-gradient(transparent,transparent)}
+.num{font:inherit; font-size:14px; font-family:var(--mono); padding:7px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); width:100%; font-variant-numeric:tabular-nums}
+.num[aria-invalid="true"]{border-color:#d9480f}
+.hint{font-size:12px; color:var(--muted); margin:0}
+.pos{display:grid; grid-template-columns:minmax(0,1fr) 92px; gap:6px; align-items:center}
+.pos .pct{position:relative}
+.pos .pct .num{padding-right:24px}
+.pos .pct::after{content:"%"; position:absolute; right:9px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:13px; color:var(--muted); pointer-events:none}
+.group{display:grid; gap:14px; padding:12px; border:1px dashed var(--line); border-radius:7px}
+.meters.dense{gap:0}
+.meters.dense span{border-radius:0}
+#track.multi{height:auto}
+.multi-box{position:relative; width:100%; height:100%; overflow-y:auto; border-radius:6px; background:var(--surface); border:1px solid var(--line); overscroll-behavior:contain}
+.mspace{height:85cqh; display:grid; place-items:center; font-family:var(--mono); font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em}
+.mspace.end{height:70cqh}
+.mspace.first{height:28cqh; padding-inline:16px; text-align:center}
+.check{display:flex; gap:8px; align-items:flex-start; font-size:14px; cursor:pointer}
+.check input{margin-top:3px; accent-color:var(--accent)}
+.check code{font-family:var(--mono); font-size:.9em; background:var(--sunk); padding:1px 5px; border-radius:4px}
+.mframe{position:relative; margin:0 auto 40cqh; width:min(100% - 32px, 520px); aspect-ratio:16/10; border-radius:6px; overflow:hidden;
+  background-color:var(--sunk); background-image:linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size:calc(100% / var(--n,12)) 100%}
+.mframe.rows{background-image:linear-gradient(180deg, var(--line) 1px, transparent 1px); background-size:100% calc(100% / var(--n,12))}
+.mframe:last-of-type{margin-bottom:0}
+.mframe figcaption{position:absolute; left:8px; top:6px; z-index:1; font-family:var(--mono); font-size:11px; color:var(--muted)}
+.multi-box .gsap-marker-start, .multi-box .gsap-marker-end, .multi-box .gsap-marker-scroller-start, .multi-box .gsap-marker-scroller-end{font-family:var(--mono)!important}
+</style>
 
 <div class="wrap">
   <header class="intro">
-    <span class="eyebrow">CSS mask · GSAP ScrollTrigger · stagger</span>
-    <h1>Stripe mask reveal</h1>
-    <p>One <strong>mask-image</strong>, one linear-gradient. GSAP staggers an array of plain numbers, one per strip, and every frame rewrites the gradient's hard stops from them. Scroll to scrub it, and change the settings on the right while you watch.</p>
+    <span class="eyebrow">GSAP + mask · pure CSS · GSAP + canvas</span>
+    <h1>Stripe mask reveal generator</h1>
+    <p>One <strong>mask-image</strong>, one linear-gradient. GSAP staggers an array of plain numbers, one per strip, and every frame rewrites the gradient's hard stops from them. Tune it in the preview, then copy production code for GSAP + mask, pure CSS or GSAP + canvas. Every setting updates all three.</p>
     <span class="cue">Scroll to reveal</span>
   </header>
 </div>
@@ -115,15 +147,24 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
   <div class="wrap bench">
     <div class="stage">
       <div class="hud">
-        <span>scroll <b id="hudP">0%</b></span>
-        <span class="pbar"><i id="hudBar"></i></span>
-        <span><b id="hudN">12</b> strips</span>
+        <span id="hudScroll">scroll <b id="hudP">0%</b></span>
+        <span class="pbar" id="hudPbar"><i id="hudBar"></i></span>
+        <span id="hudMulti" hidden>Scroll inside the box. It stands in for the browser window, and the markers show each image's start and end.</span>
+        <span><b id="hudN">12</b> <span id="hudUnit">columns</span></span>
         <span>from <b id="hudFrom">start</b></span>
       </div>
       <div class="box">
         <div class="frame" id="frame">
           <div class="ghost">masked area</div>
-          <img id="masked" alt="Generated dusk landscape revealed through vertical strips">
+          <img class="masked" id="masked" alt="Generated dusk landscape revealed through strips">
+        </div>
+        <div class="multi-box" id="multiBox" hidden tabindex="0" aria-label="Multiple instances preview. Scroll inside it.">
+          <div class="mspace first">Image #1 is already in view on load. Scroll inside this box ↓</div>
+          <figure class="mframe"><figcaption>.reveal #1</figcaption><img class="masked" alt="Generated landscape 1"></figure>
+          <figure class="mframe"><figcaption>.reveal #2</figcaption><img class="masked" alt="Generated landscape 2"></figure>
+          <figure class="mframe"><figcaption>.reveal #3</figcaption><img class="masked" alt="Generated landscape 3"></figure>
+          <figure class="mframe"><figcaption>.reveal #4</figcaption><img class="masked" alt="Generated landscape 4"></figure>
+          <div class="mspace end">End of preview</div>
         </div>
       </div>
       <div class="meters" id="meters" aria-hidden="true"></div>
@@ -133,6 +174,22 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
       <h2>Settings</h2>
 
       <div class="field">
+        <span class="lbl">Instances</span>
+        <div class="seg" data-key="instances">
+          <button type="button" id="instances-single" data-v="single" aria-pressed="true">Single, pinned</button>
+          <button type="button" id="instances-multiple" data-v="multiple" aria-pressed="false">Multiple</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="lbl">Stripe direction</span>
+        <div class="seg" data-key="direction">
+          <button type="button" id="direction-horizontal" data-v="horizontal" aria-pressed="true">Horizontal ⇢ columns</button>
+          <button type="button" id="direction-vertical" data-v="vertical" aria-pressed="false">Vertical ⇣ rows</button>
+        </div>
+      </div>
+
+      <div class="field">
         <span class="lbl">Trigger</span>
         <div class="seg" data-key="mode">
           <button type="button" id="mode-scrub" data-v="scrub" aria-pressed="true">Scrub with scroll</button>
@@ -140,14 +197,48 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
         </div>
       </div>
 
+      <div class="group" id="posGroup" hidden>
+        <div class="field">
+          <label for="startEdge">Start <output id="startOut">top 85%</output></label>
+          <div class="pos">
+            <select id="startEdge" aria-label="Start: element edge">
+              <option value="top">Element top</option>
+              <option value="center">Element center</option>
+              <option value="bottom">Element bottom</option>
+            </select>
+            <span class="pct"><input class="num" type="number" id="startPos" min="0" max="100" step="1" value="85" aria-label="Start: viewport position in percent"></span>
+          </div>
+        </div>
+        <div class="field" id="endField">
+          <label for="endEdge">End <output id="endOut">center 50%</output></label>
+          <div class="pos">
+            <select id="endEdge" aria-label="End: element edge">
+              <option value="top">Element top</option>
+              <option value="center">Element center</option>
+              <option value="bottom">Element bottom</option>
+            </select>
+            <span class="pct"><input class="num" type="number" id="endPos" min="0" max="100" step="1" value="50" aria-label="End: viewport position in percent"></span>
+          </div>
+        </div>
+        <p class="hint">The percentage is measured from the top of the viewport. "top 85%" fires when the element's top edge is 85% of the way down the screen.</p>
+        <label class="check" for="clamp"><input type="checkbox" id="clamp" checked> <span>Wrap start and end in <code>clamp()</code></span></label>
+        <p class="hint">Keeps both positions inside the page's scroll range. Without it, an image that is already past its start line when the page loads (like #1 in the preview) starts part-way revealed.</p>
+      </div>
+
+      <div class="field" id="durationField" hidden>
+        <label for="duration">Duration per strip <output id="durationOut">1.0 s</output></label>
+        <input type="range" id="duration" min="0.1" max="5" step="0.1" value="1">
+        <p class="hint" id="totalHint"></p>
+      </div>
+
       <div class="field">
-        <label for="n">Strips <output id="nOut">12</output></label>
-        <input type="range" id="n" min="3" max="32" step="1" value="12">
+        <label for="n">Strips <output>2 to 500</output></label>
+        <input class="num" type="number" id="n" min="2" max="500" step="1" value="12" inputmode="numeric">
       </div>
 
       <div class="field">
         <label for="each">Stagger each <output id="eachOut">0.08</output></label>
-        <input type="range" id="each" min="0" max="0.25" step="0.01" value="0.08">
+        <input type="range" id="each" min="0" max="1" step="0.01" value="0.08">
       </div>
 
       <div class="field">
@@ -203,32 +294,33 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
 <div class="wrap">
   <section class="how">
     <span class="eyebrow">How it works</span>
-    <h2>GSAP staggers numbers, CSS paints them</h2>
+    <h2>GSAP staggers numbers, the page paints them</h2>
     <div class="cols">
       <div class="points">
         <div>
           <h3>1. One object per strip</h3>
-          <p>GSAP can tween any object, not only elements. <code>strips</code> is an array of <code>{ progress: 0 }</code>. Passing the whole array to <code>tl.to()</code> with <code>stagger</code> gives every strip its own delayed, eased progress from 0 to 1.</p>
+          <p>GSAP can tween any object, not only elements. <code>strips</code> is an array of <code>{ progress: 0 }</code>. Passing the whole array to <code>.to()</code> with <code>stagger</code> gives every strip its own delayed, eased progress from 0 to 1.</p>
         </div>
         <div>
-          <h3>2. Rewrite the gradient every frame</h3>
-          <p>In the timeline's <code>onUpdate</code>, <code>paintMask()</code> turns each strip into hard stops: black from <code>stripStart</code> to <code>stripStart + stripWidth × progress</code>, then transparent to the slot's end. Black shows the image and transparent hides it.</p>
+          <h3>2. Paint every frame</h3>
+          <p>In the timeline's <code>onUpdate</code>, each strip becomes a band from <code>stripStart</code> to <code>stripStart + stripSize × progress</code>. The mask version writes those bands as gradient hard stops. The canvas version fills them as rectangles and draws the image into them.</p>
         </div>
         <div>
-          <h3>3. ScrollTrigger drives the timeline</h3>
-          <p>With <code>scrub</code>, scroll position sets the timeline's progress, so reversing the scroll reverses the reveal. Swap it for <code>toggleActions</code> to play once when the section enters.</p>
+          <h3>3. One function, any number of images</h3>
+          <p>The code wraps the setup in <code>createMaskReveal()</code> or <code>createCanvasReveal()</code>. Single mode calls it once with a pinned track. Multiple mode calls it for every matching element, each with its own <code>start</code> and <code>end</code>.</p>
         </div>
         <div>
-          <h3>Why not animate a CSS variable?</h3>
-          <p>The pure-CSS version needs one <code>clamp()</code> per strip and a linear timeline. Doing the stagger in GSAP gives you real per-strip easing, <code>from: "center"</code> or <code>"random"</code> ordering, and any strip count, with the same single mask.</p>
+          <h3>Why three versions?</h3>
+          <p>GSAP + mask is the most flexible. Pure CSS needs no library but has less browser support for scrubbing. Canvas behaves the same in every browser and gives per-pixel control, at the cost of turning the image into pixels.</p>
         </div>
       </div>
       <div class="snippet">
         <span class="eyebrow">Code for your current settings</span>
         <div class="snip-head">
           <div class="seg tabs" data-key="codeView" aria-label="Code version">
-            <button type="button" id="code-gsap" data-v="gsap" aria-pressed="true">GSAP + ScrollTrigger</button>
+            <button type="button" id="code-gsap" data-v="gsap" aria-pressed="true">GSAP + mask</button>
             <button type="button" id="code-css" data-v="css" aria-pressed="false">Pure CSS clamp()</button>
+            <button type="button" id="code-canvas" data-v="canvas" aria-pressed="false">GSAP + Canvas</button>
           </div>
           <button type="button" class="btn ghosty" id="copySnip">Copy</button>
         </div>
@@ -243,204 +335,397 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 <script>
 (function(){
-  /* ---------- generated image (no external assets allowed) ---------- */
-  function makeImage(){
-    const W=1600,H=1000,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+  const $=id=>document.getElementById(id);
+
+  /* ---------- generated images (no external assets allowed) ---------- */
+  const PALETTES=[
+    {sky:['#1b1f4a','#5b3a78','#e0705a','#f6c27a'], ridges:['#7a4a7c','#4f3566','#2e2650','#17163a'], sun:[1060,600]},
+    {sky:['#0e2a3b','#1f5c6e','#7fb3a6','#e8d9b0'], ridges:['#3f6f6a','#2a5452','#1a3a3d','#0d2428'], sun:[420,560]},
+    {sky:['#2a1630','#7a2f4a','#e2884f','#f7d58b'], ridges:['#8a3c4c','#5e2a3d','#3b1c2e','#1f101d'], sun:[800,620]},
+    {sky:['#101a33','#283c78','#6e8bd6','#c9d6f2'], ridges:['#3a4d8a','#2a3a6e','#1b2850','#0f1834'], sun:[1240,580]},
+    {sky:['#1d2a1a','#3f5a34','#a9b56a','#efe3a6'], ridges:['#5a6e3a','#3f522c','#2a3a20','#161f12'], sun:[600,600]}
+  ];
+  function makeImage(p){
+    const W=1200,H=750,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
     const sky=x.createLinearGradient(0,0,0,H);
-    sky.addColorStop(0,'#1b1f4a');sky.addColorStop(.45,'#5b3a78');sky.addColorStop(.72,'#e0705a');sky.addColorStop(1,'#f6c27a');
+    [0,.45,.72,1].forEach((o,i)=>sky.addColorStop(o,p.sky[i]));
     x.fillStyle=sky;x.fillRect(0,0,W,H);
-    // stars
     let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
-    x.fillStyle='rgba(255,255,255,.7)';
-    for(let i=0;i<160;i++){const sx=rnd()*W,sy=rnd()*H*.45;x.globalAlpha=.25+rnd()*.6;x.fillRect(sx,sy,1.6,1.6)}
+    x.fillStyle='#fff';
+    for(let i=0;i<120;i++){const sx=rnd()*W,sy=rnd()*H*.45;x.globalAlpha=.25+rnd()*.6;x.fillRect(sx,sy,1.4,1.4)}
     x.globalAlpha=1;
-    // sun
-    const sg=x.createRadialGradient(1060,600,10,1060,600,260);
-    sg.addColorStop(0,'rgba(255,236,190,1)');sg.addColorStop(.45,'rgba(255,200,140,.9)');sg.addColorStop(1,'rgba(255,170,120,0)');
-    x.fillStyle=sg;x.beginPath();x.arc(1060,600,260,0,Math.PI*2);x.fill();
-    x.fillStyle='#fff1d6';x.beginPath();x.arc(1060,600,92,0,Math.PI*2);x.fill();
-    // ridges
-    const ridges=[
-      {y:.62,amp:90,col:'#7a4a7c',f:[.004,.011,.023]},
-      {y:.70,amp:80,col:'#4f3566',f:[.006,.013,.031]},
-      {y:.79,amp:60,col:'#2e2650',f:[.005,.017,.04]},
-      {y:.89,amp:40,col:'#17163a',f:[.008,.021,.05]}
-    ];
-    ridges.forEach((r,k)=>{
-      x.fillStyle=r.col;x.beginPath();x.moveTo(0,H);
-      for(let px=0;px<=W;px+=8){
-        const yy=H*r.y - r.amp*(Math.sin(px*r.f[0]+k*2)*.6+Math.sin(px*r.f[1]+k)*.3+Math.sin(px*r.f[2]+k*5)*.1);
-        x.lineTo(px,yy);
+    const sx=p.sun[0]*.75, sy=p.sun[1]*.75;
+    const sg=x.createRadialGradient(sx,sy,8,sx,sy,200);
+    sg.addColorStop(0,'rgba(255,240,205,1)');sg.addColorStop(.45,'rgba(255,215,160,.85)');sg.addColorStop(1,'rgba(255,190,140,0)');
+    x.fillStyle=sg;x.beginPath();x.arc(sx,sy,200,0,Math.PI*2);x.fill();
+    x.fillStyle='#fff3dc';x.beginPath();x.arc(sx,sy,70,0,Math.PI*2);x.fill();
+    const rows=[{y:.62,amp:68,f:[.0053,.0147,.031]},{y:.70,amp:60,f:[.008,.017,.041]},{y:.79,amp:45,f:[.0067,.0227,.053]},{y:.89,amp:30,f:[.0107,.028,.067]}];
+    rows.forEach((r,k)=>{
+      x.fillStyle=p.ridges[k];x.beginPath();x.moveTo(0,H);
+      for(let px=0;px<=W;px+=6){
+        x.lineTo(px, H*r.y - r.amp*(Math.sin(px*r.f[0]+k*2)*.6+Math.sin(px*r.f[1]+k)*.3+Math.sin(px*r.f[2]+k*5)*.1));
       }
       x.lineTo(W,H);x.closePath();x.fill();
     });
-    // grain
     const id=x.getImageData(0,0,W,H),d=id.data;
     for(let i=0;i<d.length;i+=4){const n=(rnd()-.5)*14;d[i]+=n;d[i+1]+=n;d[i+2]+=n}
     x.putImageData(id,0,0);
-    return c.toDataURL('image/jpeg',.88);
+    return c.toDataURL('image/jpeg',.86);
   }
-  const img=document.getElementById('masked');
-  img.src=makeImage();
+  const mainImg=$('masked');
+  mainImg.src=makeImage(PALETTES[0]);
+  const multiImgs=[...document.querySelectorAll('#multiBox img')];
+  multiImgs.forEach((im,i)=>im.src=makeImage(PALETTES[i+1]));
 
   /* ---------- state ---------- */
-  const DEFAULTS={mode:'scrub',n:12,each:0.08,from:'start',origin:'left',ease:'power3.inOut',feather:0};
+  const DEFAULTS={instances:'single',direction:'horizontal',mode:'scrub',n:12,each:0.08,duration:1,from:'start',origin:'left',
+    ease:'power3.inOut',feather:0,startEdge:'top',startPos:85,endEdge:'center',endPos:50,clamp:true};
   const state=Object.assign({},DEFAULTS);
-  const $=id=>document.getElementById(id);
-  const frame=$('frame'), meters=$('meters'), live=$('live');
-  let strips=[], meterEls=[], tl=null, lastStr='', codeView='gsap';
+  let instances=[], lastStr='', codeView='gsap', liveTick=0;
 
+  const isRows=()=>state.direction==='vertical';
+  const isScrub=()=>state.mode==='scrub';
+  const isMulti=()=>state.instances==='multiple';
+  const angle=()=>isRows()?'180deg':'90deg';
+  const startStr=()=>state.startEdge+' '+state.startPos+'%';
+  const endStr=()=>state.endEdge+' '+state.endPos+'%';
+  const wrap=v=>state.clamp?'clamp('+v+')':v;
+  const triggerStart=()=>wrap(startStr());
+  const triggerEnd=()=>wrap(endStr());
+  const stripDuration=()=>isScrub()?1:state.duration;
+  function words(){
+    return isRows()
+      ? {start:'top', end:'bottom', unit:'row', units:'rows', fwd:'down', back:'up', startEdge:'top edge', endEdge:'bottom edge'}
+      : {start:'left', end:'right', unit:'column', units:'columns', fwd:'right', back:'left', startEdge:'left edge', endEdge:'right edge'};
+  }
+  const originName=o=>o==='center'?'center':(o==='left'?words().start:words().end);
   const f=v=>(Math.round(v*1000)/1000)+'%';
+  const r4=x=>String(Math.round(x*10000)/10000);
 
-  function paint(){
-    const n=strips.length, w=100/n, stops=[];
-    const fMax=state.feather/100*w;
+  /* ---------- painting the preview ---------- */
+  function paint(inst){
+    const n=inst.strips.length, w=100/n, stops=[], fMax=state.feather/100*w;
     for(let i=0;i<n;i++){
-      const v=Math.min(1,Math.max(0,strips[i].v));
+      const v=Math.min(1,Math.max(0,inst.strips[i].progress));
       const a=i*w, b=a+w, vis=w*v;
       const fw=Math.min(fMax*(1-v), state.origin==='center'?vis/2:vis);
       if(state.origin==='left'){
-        const R=a+vis;
-        stops.push('#000 '+f(a), '#000 '+f(R-fw), 'transparent '+f(R), 'transparent '+f(b));
+        const R=a+vis; stops.push('#000 '+f(a), '#000 '+f(R-fw), 'transparent '+f(R), 'transparent '+f(b));
       }else if(state.origin==='right'){
-        const L=b-vis;
-        stops.push('transparent '+f(a), 'transparent '+f(L), '#000 '+f(L+fw), '#000 '+f(b));
+        const L=b-vis; stops.push('transparent '+f(a), 'transparent '+f(L), '#000 '+f(L+fw), '#000 '+f(b));
       }else{
         const m=a+w/2, L=m-vis/2, R=m+vis/2;
         stops.push('transparent '+f(a), 'transparent '+f(L), '#000 '+f(L+fw), '#000 '+f(R-fw), 'transparent '+f(R), 'transparent '+f(b));
       }
-      if(meterEls[i]) meterEls[i].style.transform='scaleY('+v+')';
+      if(inst.meters && inst.meters[i]) inst.meters[i].style.transform='scaleY('+v+')';
     }
-    const g='linear-gradient(90deg, '+stops.join(', ')+')';
-    img.style.webkitMaskImage=g; img.style.maskImage=g;
+    const g='linear-gradient('+angle()+', '+stops.join(', ')+')';
+    inst.el.style.webkitMaskImage=g; inst.el.style.maskImage=g;
     lastStr=g;
-  }
-  // throttle the text readout so it stays cheap
-  let liveTick=0;
-  function paintAndReadout(){
-    paint();
     const now=performance.now();
-    if(now-liveTick>120){liveTick=now; live.textContent='mask-image: '+lastStr.replace(/, (?=#000|transparent)/g,',\n  ')+';'}
+    if(now-liveTick>150){liveTick=now; $('live').textContent='mask-image: '+(g.length>6000?g.slice(0,6000)+' …':g.replace(/, (?=#000|transparent)/g,',\n  '))+';'}
   }
 
   function buildMeters(){
-    meters.innerHTML='';meterEls=[];
-    for(let i=0;i<state.n;i++){const s=document.createElement('span'),b=document.createElement('i');s.appendChild(b);meters.appendChild(s);meterEls.push(b)}
-    frame.style.setProperty('--n',state.n);
+    const m=$('meters'); m.innerHTML=''; const els=[];
+    const frag=document.createDocumentFragment();
+    for(let i=0;i<state.n;i++){const s=document.createElement('span'),b=document.createElement('i');s.appendChild(b);frag.appendChild(s);els.push(b)}
+    m.appendChild(frag); m.classList.toggle('dense', state.n>64);
+    return els;
   }
 
-  function hud(p){
-    $('hudP').textContent=Math.round(p*100)+'%';
-    $('hudBar').style.transform='scaleX('+p+')';
+  function hud(p){ $('hudP').textContent=Math.round(p*100)+'%'; $('hudBar').style.transform='scaleX('+p+')'; }
+
+  function killAll(){
+    instances.forEach(inst=>{ if(inst.tl){ if(inst.tl.scrollTrigger) inst.tl.scrollTrigger.kill(); inst.tl.kill(); } });
+    instances=[];
   }
 
   function build(){
-    if(tl){ if(tl.scrollTrigger) tl.scrollTrigger.kill(); tl.kill(); }
-    strips=Array.from({length:state.n},()=>({v:0}));
-    buildMeters();
-    $('hudN').textContent=state.n; $('hudFrom').textContent=state.from;
-    const base={trigger:'#track', onUpdate:self=>hud(self.progress)};
-    const st = state.mode==='scrub'
-      ? Object.assign(base,{start:'top top', end:'bottom bottom', scrub:0.6})
-      : Object.assign(base,{start:'top 55%', end:'bottom bottom', toggleActions:'play none none reverse'});
-    tl=gsap.timeline({scrollTrigger:st, onUpdate:paintAndReadout});
-    tl.to(strips,{v:1, duration:state.mode==='scrub'?1:1.1, ease:state.ease, stagger:{each:state.each, from:state.from}});
-    $('replay').hidden = state.mode!=='play';
-    paintAndReadout(); liveTick=0;
-    renderSnippet();
+    killAll();
+    const multi=isMulti(), scrub=isScrub();
+    $('track').classList.toggle('multi', multi);
+    $('frame').hidden=multi; $('multiBox').hidden=!multi; $('meters').hidden=multi;
+    $('hudScroll').hidden=multi; $('hudPbar').hidden=multi; $('hudMulti').hidden=!multi;
+    document.querySelectorAll('.frame, .mframe').forEach(fr=>{ fr.style.setProperty('--n',state.n); fr.classList.toggle('rows',isRows()); });
+
+    const targets = multi ? multiImgs : [mainImg];
+    instances = targets.map(el=>({el, strips:Array.from({length:state.n},()=>({progress:0}))}));
+    if(!multi) instances[0].meters=buildMeters();
+
+    instances.forEach(inst=>{
+      let st;
+      if(multi){
+        st={trigger:inst.el.parentElement, scroller:'#multiBox', start:triggerStart(),
+            markers:{startColor:'#2c55e0', endColor:'#d9480f', fontSize:'11px', indent:12}};
+        if(scrub){ st.end=triggerEnd(); st.scrub=0.6; } else st.toggleActions='play none none reverse';
+      } else {
+        st={trigger:'#track', onUpdate:self=>hud(self.progress)};
+        if(scrub){ st.start='top top'; st.end='bottom bottom'; st.scrub=0.6; }
+        else { st.start='top 55%'; st.end='bottom bottom'; st.toggleActions='play none none reverse'; }
+      }
+      inst.tl=gsap.timeline({scrollTrigger:st, onUpdate:()=>paint(inst)});
+      inst.tl.to(inst.strips,{progress:1, duration:stripDuration(), ease:state.ease, stagger:{each:state.each, from:state.from}});
+      paint(inst);
+    });
+    if(!multi) hud(0);
     ScrollTrigger.refresh();
+    syncLabels();
+    renderSnippet();
   }
 
-
-  /* ---------- code snippet that mirrors the current settings ---------- */
-  function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-  function snippetText(){
-    const F=state.feather/100, o=state.origin, L=[];
-    L.push('// <script src="gsap.min.js"> + ScrollTrigger.min.js');
-    L.push('gsap.registerPlugin(ScrollTrigger);','');
-    L.push('const revealElement = document.querySelector(".reveal");');
-    L.push('const STRIP_COUNT = '+state.n+';');
-    if(F>0) L.push('const FEATHER_AMOUNT = '+F+'; // soft leading edge, as a fraction of one strip');
-    L.push('');
-    L.push('// One plain object per strip. GSAP tweens each "progress" from 0 to 1.');
-    L.push('const strips = Array.from({ length: STRIP_COUNT }, () => ({ progress: 0 }));','');
-    L.push('function paintMask() {');
-    L.push('  const stripWidth = 100 / STRIP_COUNT; // in %');
-    L.push('');
-    L.push('  const colorStops = strips.map((strip, index) => {');
-    L.push('    const stripStart = index * stripWidth;');
-    L.push('    const stripEnd = stripStart + stripWidth;');
-    L.push('    const progress = Math.min(1, Math.max(0, strip.progress)); // clamp eases that overshoot');
-    L.push('    const revealedWidth = stripWidth * progress;');
-    L.push('');
-    if(o==='left'){
-      L.push('    // Each strip grows from: LEFT');
-      L.push('    // Visible part is pinned to stripStart and its right edge moves right.');
-      L.push('    const revealEnd = stripStart + revealedWidth;');
-      if(F>0){
-        L.push('    const featherWidth = Math.min(FEATHER_AMOUNT * stripWidth * (1 - progress), revealedWidth);');
-        L.push('    return `#000 ${stripStart}%, #000 ${revealEnd - featherWidth}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;');
-      } else {
-        L.push('    return `#000 ${stripStart}%, #000 ${revealEnd}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;');
-      }
-    }else if(o==='right'){
-      L.push('    // Each strip grows from: RIGHT');
-      L.push('    // Visible part is pinned to stripEnd and its left edge moves left.');
-      L.push('    const revealStart = stripEnd - revealedWidth;');
-      if(F>0){
-        L.push('    const featherWidth = Math.min(FEATHER_AMOUNT * stripWidth * (1 - progress), revealedWidth);');
-        L.push('    return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart + featherWidth}%, #000 ${stripEnd}%`;');
-      } else {
-        L.push('    return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart}%, #000 ${stripEnd}%`;');
-      }
-    }else{
-      L.push('    // Each strip grows from: CENTER');
-      L.push('    // Visible part is centred in the strip and both edges move outward.');
-      L.push('    const stripCenter = stripStart + stripWidth / 2;');
-      L.push('    const revealStart = stripCenter - revealedWidth / 2;');
-      L.push('    const revealEnd = stripCenter + revealedWidth / 2;');
-      if(F>0){
-        L.push('    const featherWidth = Math.min(FEATHER_AMOUNT * stripWidth * (1 - progress), revealedWidth / 2);');
-        L.push('    return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart + featherWidth}%, #000 ${revealEnd - featherWidth}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;');
-      } else {
-        L.push('    return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart}%, #000 ${revealEnd}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;');
-      }
-    }
-    L.push('  });','');
-    L.push('  const maskGradient = `linear-gradient(90deg, ${colorStops.join(", ")})`;');
-    L.push('  revealElement.style.webkitMaskImage = maskGradient;');
-    L.push('  revealElement.style.maskImage = maskGradient;','}','');
-    L.push('gsap.timeline({','  scrollTrigger: {','    trigger: ".reveal-track",');
-    if(state.mode==='scrub'){ L.push('    start: "top top",','    end: "bottom bottom",','    scrub: 0.6'); }
-    else { L.push('    start: "top 55%",','    toggleActions: "play none none reverse"'); }
-    L.push('  },','  onUpdate: paintMask','})','.to(strips, {','  progress: 1,');
-    L.push('  duration: '+(state.mode==='scrub'?1:1.1)+',');
-    L.push('  ease: "'+state.ease+'",');
-    L.push('  stagger: { each: '+state.each+', from: "'+state.from+'" }');
-    L.push('});','','paintMask(); // start fully hidden','');
-    L.push('/* CSS */');
-    L.push('/* .reveal { mask-size: 100% 100%; mask-repeat: no-repeat; } */');
-    if(state.mode==='scrub') L.push('/* .reveal-track { height: 300vh; }  put .reveal inside a position: sticky child */');
-    return L.join('\n');
+  /* ---------- stagger timing shared by the CSS generator and the hint ---------- */
+  function randomRanks(n){
+    let seed=n*97+13; const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
+    const order=[...Array(n).keys()];
+    for(let i=n-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[order[i],order[j]]=[order[j],order[i]]}
+    const ranks=Array(n); order.forEach((stripIndex,rank)=>ranks[stripIndex]=rank); return ranks;
   }
-  const r4=x=>String(Math.round(x*10000)/10000);
-
-  // Same ordering rules GSAP uses for stagger "from", as delays in timeline units
   function staggerDelays(n,each,from){
     const c=(n-1)/2; let d;
     if(from==='end') d=[...Array(n).keys()].map(i=>n-1-i);
     else if(from==='center') d=[...Array(n).keys()].map(i=>Math.abs(i-c));
     else if(from==='edges') d=[...Array(n).keys()].map(i=>c-Math.abs(i-c));
-    else if(from==='random'){
-      let seed=n*97+13; const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
-      const order=[...Array(n).keys()];
-      for(let i=n-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[order[i],order[j]]=[order[j],order[i]]}
-      d=Array(n); order.forEach((stripIndex,rank)=>d[stripIndex]=rank);
-    } else d=[...Array(n).keys()];
+    else if(from==='random') d=randomRanks(n);
+    else d=[...Array(n).keys()];
     const min=Math.min(...d); return d.map(x=>(x-min)*each);
   }
 
-  // CSS math for each GSAP ease, written against a strip's time / in / out variables
+  /* ---------- shared pieces for the generated code ---------- */
+  // Lines of the scrollTrigger options object
+  function stLines(trigger, ind){
+    const out=['trigger: '+trigger+','];
+    if(isMulti()){
+      if(state.clamp) out.push('// clamp() keeps start/end inside the scrollable range, so an image already in view on load starts at 0%');
+      out.push('start: "'+triggerStart()+'", // element '+state.startEdge+' meets '+state.startPos+'% down the viewport');
+      if(isScrub()) out.push('end: "'+triggerEnd()+'", // element '+state.endEdge+' meets '+state.endPos+'% down the viewport');
+    } else if(isScrub()){
+      out.push('start: "top top", // track top meets viewport top','end: "bottom bottom", // track bottom meets viewport bottom');
+    } else {
+      out.push('start: "top 55%",');
+    }
+    out.push(isScrub() ? 'scrub: 0.6 // follow the scroll with a little smoothing' : 'toggleActions: "play none none reverse" // play on enter, reverse when scrolled back above');
+    return out.map(l=>ind+l);
+  }
+  function callLines(fnName, selector, elVar){
+    const L=[];
+    if(isMulti()){
+      L.push('// Every '+selector+' on the page gets its own ScrollTrigger');
+      L.push('document.querySelectorAll("'+selector+'").forEach(('+elVar+') => {');
+      L.push('  '+fnName+'('+elVar+', {');
+      L.push(...stLines(elVar,'    '));
+      L.push('  });','});');
+    } else {
+      L.push(fnName+'(document.querySelector("'+selector+'"), {');
+      L.push(...stLines('".reveal-track"','  '));
+      L.push('});');
+    }
+    return L;
+  }
+  function tweenLines(ind){
+    return [
+      '.to(strips, {',
+      '  progress: 1,',
+      '  duration: '+stripDuration()+', // '+(isScrub()?'relative: scrub maps the whole timeline onto the scroll distance':'seconds per strip'),
+      '  ease: "'+state.ease+'",',
+      '  stagger: { each: '+state.each+', from: "'+state.from+'" }'+(isScrub()?'':' // each = seconds between strip starts'),
+      '});'
+    ].map(l=>ind+l);
+  }
+  function summary(){
+    const F=state.feather;
+    return state.n+' '+words().units+' · stagger '+state.each+' from "'+state.from+'" · grows from '+originName(state.origin)+' · ease '+state.ease+
+      (F>0?' · feather '+F+'%':'')+' · '+(isScrub()?'scrub':'play on enter, '+state.duration+'s per strip')+' · '+(isMulti()?'multiple instances, start '+triggerStart()+(isScrub()?', end '+triggerEnd():''):'single pinned instance');
+  }
+
+  /* ---------- GSAP + mask ---------- */
+  function gsapSnippetText(){
+    const F=state.feather/100, o=state.origin, W_=words(), L=[];
+    L.push('// Stripe mask reveal · GSAP + ScrollTrigger + CSS mask');
+    L.push('// '+summary());
+    L.push('// <script src="gsap.min.js"> + ScrollTrigger.min.js','');
+    L.push('gsap.registerPlugin(ScrollTrigger);','');
+    L.push('const STRIP_COUNT = '+state.n+';');
+    L.push('const GRADIENT_ANGLE = "'+angle()+'"; // '+(isRows()?'vertical: stripes are rows, stacked top to bottom':'horizontal: stripes are columns, left to right'));
+    if(F>0) L.push('const FEATHER_AMOUNT = '+F+'; // soft leading edge, as a fraction of one strip');
+    L.push('');
+    L.push('function createMaskReveal(revealElement, scrollTrigger) {');
+    L.push('  // One plain object per strip. GSAP tweens each "progress" from 0 to 1.');
+    L.push('  const strips = Array.from({ length: STRIP_COUNT }, () => ({ progress: 0 }));','');
+    L.push('  function paintMask() {');
+    L.push('    const stripSize = 100 / STRIP_COUNT; // % of the width (columns) or height (rows)');
+    L.push('    const colorStops = strips.map((strip, index) => {');
+    L.push('      const stripStart = index * stripSize;');
+    L.push('      const stripEnd = stripStart + stripSize;');
+    L.push('      const progress = Math.min(1, Math.max(0, strip.progress)); // clamp eases that overshoot');
+    L.push('      const revealedSize = stripSize * progress;');
+    if(F>0) L.push('      const featherSize = Math.min(FEATHER_AMOUNT * stripSize * (1 - progress), revealedSize'+(o==='center'?' / 2':'')+');');
+    L.push('');
+    if(o==='left'){
+      L.push('      // Grows from '+W_.start+': pinned to the strip\'s '+W_.startEdge+', its '+W_.endEdge+' moves '+W_.fwd);
+      L.push('      const revealEnd = stripStart + revealedSize;');
+      L.push(F>0 ? '      return `#000 ${stripStart}%, #000 ${revealEnd - featherSize}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;'
+                 : '      return `#000 ${stripStart}%, #000 ${revealEnd}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;');
+    } else if(o==='right'){
+      L.push('      // Grows from '+W_.end+': pinned to the strip\'s '+W_.endEdge+', its '+W_.startEdge+' moves '+W_.back);
+      L.push('      const revealStart = stripEnd - revealedSize;');
+      L.push(F>0 ? '      return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart + featherSize}%, #000 ${stripEnd}%`;'
+                 : '      return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart}%, #000 ${stripEnd}%`;');
+    } else {
+      L.push('      // Grows from center: both edges move outward ('+W_.back+' and '+W_.fwd+')');
+      L.push('      const stripCenter = stripStart + stripSize / 2;');
+      L.push('      const revealStart = stripCenter - revealedSize / 2;');
+      L.push('      const revealEnd = stripCenter + revealedSize / 2;');
+      L.push(F>0 ? '      return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart + featherSize}%, #000 ${revealEnd - featherSize}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;'
+                 : '      return `transparent ${stripStart}%, transparent ${revealStart}%, #000 ${revealStart}%, #000 ${revealEnd}%, transparent ${revealEnd}%, transparent ${stripEnd}%`;');
+    }
+    L.push('    });','');
+    L.push('    const maskGradient = `linear-gradient(${GRADIENT_ANGLE}, ${colorStops.join(", ")})`;');
+    L.push('    revealElement.style.webkitMaskImage = maskGradient;');
+    L.push('    revealElement.style.maskImage = maskGradient;');
+    L.push('  }','');
+    L.push('  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {');
+    L.push('    strips.forEach((strip) => (strip.progress = 1));');
+    L.push('    paintMask();');
+    L.push('    return;');
+    L.push('  }','');
+    L.push('  gsap.timeline({ scrollTrigger, onUpdate: paintMask })');
+    L.push(...tweenLines('    '));
+    L.push('');
+    L.push('  paintMask(); // start fully hidden');
+    L.push('}','');
+    L.push(...callLines('createMaskReveal','.reveal','revealElement'));
+    L.push('');
+    L.push('/* CSS */');
+    L.push('/* .reveal { mask-size: 100% 100%; mask-repeat: no-repeat; } */');
+    if(!isMulti()) L.push(isScrub()
+      ? '/* .reveal-track { height: 300vh; }  put .reveal inside a position: sticky child */'
+      : '/* .reveal-track wraps the image; the reveal plays when its top reaches 55% of the viewport */');
+    return L.join('\n');
+  }
+
+  /* ---------- GSAP + Canvas ---------- */
+  function canvasSnippetText(){
+    const n=state.n, F=state.feather/100, o=state.origin, rows=isRows(), W_=words(), L=[];
+    L.push('// Stripe mask reveal · GSAP + ScrollTrigger + Canvas 2D');
+    L.push('// '+summary());
+    L.push('// <script src="gsap.min.js"> + ScrollTrigger.min.js');
+    L.push('//');
+    if(isMulti()){
+      L.push('// HTML (repeat for every image):');
+      L.push('//   <canvas class="reveal-canvas" data-src="photo.jpg" role="img" aria-label="Describe the photo"></canvas>');
+      L.push('// CSS:');
+      L.push('//   .reveal-canvas { display: block; width: 100%; aspect-ratio: 16 / 10; }','');
+    } else {
+      L.push('// HTML:');
+      L.push('//   <div class="reveal-track">');
+      L.push('//     <div class="reveal-sticky">');
+      L.push('//       <canvas class="reveal-canvas" data-src="photo.jpg" role="img" aria-label="Describe the photo"></canvas>');
+      L.push('//     </div>');
+      L.push('//   </div>');
+      L.push('// CSS:');
+      L.push(isScrub() ? '//   .reveal-track  { height: 300vh; }' : '//   .reveal-track  { }');
+      L.push('//   .reveal-sticky { '+(isScrub()?'position: sticky; top: 0; ':'')+'height: 100vh; }');
+      L.push('//   .reveal-canvas { display: block; width: 100%; height: 100%; }','');
+    }
+    L.push('gsap.registerPlugin(ScrollTrigger);','');
+    L.push('const STRIP_COUNT = '+n+';');
+    if(F>0) L.push('const FEATHER_AMOUNT = '+F+'; // soft leading edge, as a fraction of one strip');
+    L.push('');
+    L.push('function createCanvasReveal(canvas, scrollTrigger) {');
+    L.push('  const ctx = canvas.getContext("2d");');
+    L.push('  const image = new Image();','');
+    L.push('  // One plain object per strip. GSAP tweens each "progress" from 0 to 1.');
+    L.push('  const strips = Array.from({ length: STRIP_COUNT }, () => ({ progress: 0 }));','');
+    L.push('  // Mask shapes along the '+(rows?'y axis (rows)':'x axis (columns)')+'. Positions are canvas pixels.');
+    L.push('  function fillBand(from, to) {');
+    L.push('    const a = Math.round(from), b = Math.round(to); // whole pixels, so neighbouring strips meet without seams');
+    L.push(rows?'    if (b > a) ctx.fillRect(0, a, canvas.width, b - a);':'    if (b > a) ctx.fillRect(a, 0, b - a, canvas.height);');
+    L.push('  }');
+    if(F>0){
+      L.push('');
+      L.push('  // Opaque at solidAt, fully transparent at clearAt');
+      L.push('  function fillFade(solidAt, clearAt) {');
+      L.push('    if (solidAt === clearAt) return;');
+      L.push(rows?'    const fade = ctx.createLinearGradient(0, solidAt, 0, clearAt);':'    const fade = ctx.createLinearGradient(solidAt, 0, clearAt, 0);');
+      L.push('    fade.addColorStop(0, "#000");');
+      L.push('    fade.addColorStop(1, "rgba(0, 0, 0, 0)");');
+      L.push('    ctx.fillStyle = fade;');
+      L.push('    const from = Math.min(solidAt, clearAt), to = Math.max(solidAt, clearAt);');
+      L.push(rows?'    ctx.fillRect(0, from, canvas.width, to - from);':'    ctx.fillRect(from, 0, to - from, canvas.height);');
+      L.push('    ctx.fillStyle = "#000";');
+      L.push('  }');
+    }
+    L.push('');
+    L.push('  // Same as CSS object-fit: cover');
+    L.push('  function drawImageCover() {');
+    L.push('    const scale = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);');
+    L.push('    const drawWidth = image.naturalWidth * scale, drawHeight = image.naturalHeight * scale;');
+    L.push('    ctx.drawImage(image, (canvas.width - drawWidth) / 2, (canvas.height - drawHeight) / 2, drawWidth, drawHeight);');
+    L.push('  }','');
+    L.push('  function draw() {');
+    L.push('    ctx.globalCompositeOperation = "source-over";');
+    L.push('    ctx.clearRect(0, 0, canvas.width, canvas.height);');
+    L.push('    ctx.fillStyle = "#000";');
+    L.push('    const stripSize = canvas.'+(rows?'height':'width')+' / STRIP_COUNT; // pixels','');
+    L.push('    // 1. Paint the mask: one band per strip, sized by that strip\'s progress');
+    L.push('    strips.forEach((strip, index) => {');
+    L.push('      const progress = Math.min(1, Math.max(0, strip.progress)); // clamp eases that overshoot');
+    L.push('      const revealedSize = stripSize * progress;');
+    L.push('      if (revealedSize <= 0) return;');
+    L.push('      const stripStart = index * stripSize;');
+    L.push('      const stripEnd = stripStart + stripSize;');
+    if(F>0) L.push('      const featherSize = Math.min(FEATHER_AMOUNT * stripSize * (1 - progress), revealedSize'+(o==='center'?' / 2':'')+');');
+    L.push('');
+    if(o==='left'){
+      L.push('      // Grows from '+W_.start+': pinned to the strip\'s '+W_.startEdge+', its '+W_.endEdge+' moves '+W_.fwd);
+      L.push('      const revealEnd = stripStart + revealedSize;');
+      if(F>0) L.push('      fillBand(stripStart, revealEnd - featherSize);','      fillFade(revealEnd - featherSize, revealEnd);');
+      else L.push('      fillBand(stripStart, revealEnd);');
+    } else if(o==='right'){
+      L.push('      // Grows from '+W_.end+': pinned to the strip\'s '+W_.endEdge+', its '+W_.startEdge+' moves '+W_.back);
+      L.push('      const revealStart = stripEnd - revealedSize;');
+      if(F>0) L.push('      fillBand(revealStart + featherSize, stripEnd);','      fillFade(revealStart + featherSize, revealStart);');
+      else L.push('      fillBand(revealStart, stripEnd);');
+    } else {
+      L.push('      // Grows from center: both edges move outward ('+W_.back+' and '+W_.fwd+')');
+      L.push('      const stripCenter = stripStart + stripSize / 2;');
+      L.push('      const revealStart = stripCenter - revealedSize / 2;');
+      L.push('      const revealEnd = stripCenter + revealedSize / 2;');
+      if(F>0) L.push('      fillBand(revealStart + featherSize, revealEnd - featherSize);','      fillFade(revealStart + featherSize, revealStart);','      fillFade(revealEnd - featherSize, revealEnd);');
+      else L.push('      fillBand(revealStart, revealEnd);');
+    }
+    L.push('    });','');
+    L.push('    // 2. Paint the image only where the mask is: "source-in" keeps pixels that overlap what is already drawn');
+    L.push('    ctx.globalCompositeOperation = "source-in";');
+    L.push('    drawImageCover();');
+    L.push('    ctx.globalCompositeOperation = "source-over";');
+    L.push('  }','');
+    L.push('  // Match the canvas to its CSS size at device-pixel resolution');
+    L.push('  function resize() {');
+    L.push('    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);');
+    L.push('    canvas.width = Math.round(canvas.clientWidth * pixelRatio);');
+    L.push('    canvas.height = Math.round(canvas.clientHeight * pixelRatio);');
+    L.push('    draw();');
+    L.push('  }','');
+    L.push('  image.onload = () => {');
+    L.push('    resize();');
+    L.push('    new ResizeObserver(resize).observe(canvas);','');
+    L.push('    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {');
+    L.push('      strips.forEach((strip) => (strip.progress = 1));');
+    L.push('      draw();');
+    L.push('      return;');
+    L.push('    }','');
+    L.push('    gsap.timeline({ scrollTrigger, onUpdate: draw })');
+    L.push(...tweenLines('      '));
+    L.push('  };');
+    L.push('  image.src = canvas.dataset.src;');
+    L.push('}','');
+    L.push(...callLines('createCanvasReveal','.reveal-canvas','canvas'));
+    return L.join('\n');
+  }
+
+  /* ---------- Pure CSS ---------- */
   function easeCss(k){
     const T=`var(--strip-${k}-time)`, I=`var(--strip-${k}-in)`, O=`var(--strip-${k}-out)`;
     switch(state.ease){
@@ -452,26 +737,32 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
       default: return {expr:`1 + 2.6 * (${T} - 1) * (${T} - 1) * (${T} - 1) + 1.6 * (${T} - 1) * (${T} - 1)`, halves:false};
     }
   }
-
+  // GSAP "edge pos%" → CSS view-timeline offset. entry-crossing 0% = element top at viewport bottom,
+  // 100% = element bottom at viewport bottom; extra vh moves the element further up the screen.
+  function cssRange(edge,pos){
+    const k={top:0,center:50,bottom:100}[edge], v=100-pos;
+    if(k===0) return 'entry-crossing '+v+'vh';
+    return 'entry-crossing calc('+k+'% + '+v+'vh)';
+  }
   function cssSnippetText(){
-    const n=state.n, w=100/n, F=state.feather/100, o=state.origin, scrub=state.mode==='scrub';
-    const duration=scrub?1:1.1;
+    const n=state.n, w=100/n, F=state.feather/100, o=state.origin, scrub=isScrub(), multi=isMulti(), W_=words();
+    const duration=stripDuration();
     const delays=staggerDelays(n,state.each,state.from);
-    const total=Math.max(...delays)+duration;          // whole timeline length
-    const span=duration/total;                          // one strip's share of 0 → 1
+    const total=Math.max(...delays)+duration;
+    const span=duration/total;
     const L=[];
-    L.push(`/* Stripe mask reveal · pure CSS`);
-    L.push(`   ${n} strips · stagger ${state.each} from "${state.from}" · grows from ${o} · ease ${state.ease}${F>0?` · feather ${state.feather}%`:''} */`,'');
+    L.push('/* Stripe mask reveal · pure CSS');
+    L.push('   '+summary()+' */','');
     L.push('/* The only animated value. Registered so the browser can interpolate it. */');
     L.push('@property --progress {','  syntax: "<number>";','  inherits: false;','  initial-value: 0;','}','');
-    if(scrub){
+    if(scrub && !multi){
       L.push('/* Tall scroll area. Its scroll position becomes the timeline. */');
       L.push('.reveal-track {','  height: 300vh;','  view-timeline: --reveal-track block;','}','');
       L.push('.reveal-sticky {','  position: sticky;','  top: 0;','  height: 100vh;','}','');
     }
     L.push('.reveal {');
-    L.push(`  /* Each strip: time = its own 0 → 1 slice of --progress (starts at its delay, lasts ${r4(span)})`);
-    L.push('     eased = time run through the ease, width = how much of the strip is visible */');
+    L.push('  /* Each strip: time = its own 0 → 1 slice of --progress (starts at its delay, lasts '+r4(span)+')');
+    L.push('     eased = time run through the ease, size = how much of the strip is visible */');
     for(let i=0;i<n;i++){
       const k=i+1, start=delays[i]/total, e=easeCss(k);
       L.push(`  --strip-${k}-time: clamp(0, (var(--progress) - ${r4(start)}) / ${r4(span)}, 1);`);
@@ -480,23 +771,24 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
         L.push(`  --strip-${k}-out: clamp(0, 2 * var(--strip-${k}-time) - 1, 1);`);
       }
       L.push(`  --strip-${k}-eased: clamp(0, ${e.expr}, 1);`);
-      L.push(`  --strip-${k}-width: calc(${r4(w)}% * var(--strip-${k}-eased));`);
+      L.push(`  --strip-${k}-size: calc(${r4(w)}% * var(--strip-${k}-eased));`);
       if(F>0){
-        const cap=o==='center'?`calc(var(--strip-${k}-width) / 2)`:`var(--strip-${k}-width)`;
+        const cap=o==='center'?`calc(var(--strip-${k}-size) / 2)`:`var(--strip-${k}-size)`;
         L.push(`  --strip-${k}-feather: min(calc(${r4(F*w)}% * (1 - var(--strip-${k}-eased))), ${cap});`);
       }
       if(i<n-1) L.push('');
     }
     L.push('');
-    L.push(`  /* Grows from ${o}: ${o==='left'?'black is pinned to the strip start, its right edge moves right':o==='right'?'black is pinned to the strip end, its left edge moves left':'black sits in the strip centre, both edges move outward'} */`);
-    L.push('  mask-image: linear-gradient(90deg,');
+    L.push(`  /* ${isRows()?'180deg: stripes are rows, the gradient runs top → bottom':'90deg: stripes are columns, the gradient runs left → right'}`);
+    L.push(`     Grows from ${originName(o)}: ${o==='left'?`black is pinned to each strip's ${W_.startEdge}, its ${W_.endEdge} moves ${W_.fwd}`:o==='right'?`black is pinned to each strip's ${W_.endEdge}, its ${W_.startEdge} moves ${W_.back}`:`black sits in the strip centre, both edges move outward`} */`);
+    L.push(`  mask-image: linear-gradient(${angle()},`);
     for(let i=0;i<n;i++){
-      const k=i+1, A=r4(i*w)+'%', B=r4(i*w+w)+'%', W=`var(--strip-${k}-width)`, Fv=F>0?` - var(--strip-${k}-feather)`:'', Fp=F>0?` + var(--strip-${k}-feather)`:'';
+      const k=i+1, A=r4(i*w)+'%', B=r4(i*w+w)+'%', S=`var(--strip-${k}-size)`, Fv=F>0?` - var(--strip-${k}-feather)`:'', Fp=F>0?` + var(--strip-${k}-feather)`:'';
       let stops;
-      if(o==='left') stops=`#000 ${A}, #000 calc(${A} + ${W}${Fv}), transparent calc(${A} + ${W}), transparent ${B}`;
-      else if(o==='right') stops=`transparent ${A}, transparent calc(${B} - ${W}), #000 calc(${B} - ${W}${Fp}), #000 ${B}`;
+      if(o==='left') stops=`#000 ${A}, #000 calc(${A} + ${S}${Fv}), transparent calc(${A} + ${S}), transparent ${B}`;
+      else if(o==='right') stops=`transparent ${A}, transparent calc(${B} - ${S}), #000 calc(${B} - ${S}${Fp}), #000 ${B}`;
       else { const C=r4(i*w+w/2)+'%';
-        stops=`transparent ${A}, transparent calc(${C} - ${W} / 2), #000 calc(${C} - ${W} / 2${Fp}), #000 calc(${C} + ${W} / 2${Fv}), transparent calc(${C} + ${W} / 2), transparent ${B}`; }
+        stops=`transparent ${A}, transparent calc(${C} - ${S} / 2), #000 calc(${C} - ${S} / 2${Fp}), #000 calc(${C} + ${S} / 2${Fv}), transparent calc(${C} + ${S} / 2), transparent ${B}`; }
       L.push(`    /* strip ${k} */ ${stops}${i<n-1?',':''}`);
     }
     L.push('  );');
@@ -504,13 +796,21 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
     if(scrub){
       L.push('','  /* Linear on purpose: the easing already happens per strip above */');
       L.push('  animation: stripe-reveal linear both;');
-      L.push('  animation-timeline: --reveal-track;');
-      L.push('  animation-range: contain 0% contain 100%; /* track top hits viewport top → track bottom hits viewport bottom */');
+      if(multi){
+        L.push('  animation-timeline: view(); /* each .reveal tracks its own position in the viewport */');
+        L.push('  animation-range:');
+        L.push('    '+cssRange(state.startEdge,state.startPos)+' /* start: element '+state.startEdge+' at '+state.startPos+'% of the viewport */');
+        L.push('    '+cssRange(state.endEdge,state.endPos)+'; /* end: element '+state.endEdge+' at '+state.endPos+'% of the viewport */');
+        if(state.clamp) L.push('  /* GSAP clamp() has no CSS equivalent: an element already past its start line on load begins part-way revealed */');
+      } else {
+        L.push('  animation-timeline: --reveal-track;');
+        L.push('  animation-range: contain 0% contain 100%; /* track top hits viewport top → track bottom hits viewport bottom */');
+      }
     }
     L.push('}','');
     if(!scrub){
-      L.push('/* Added by the observer below when the section enters the viewport */');
-      L.push(`.reveal.is-revealed {`,`  animation: stripe-reveal ${r4(total)}s linear forwards;`,'}','');
+      L.push('/* Added by the observer below when the element enters the viewport */');
+      L.push('.reveal.is-revealed {','  animation: stripe-reveal '+r4(total)+'s linear forwards; /* '+state.duration+'s per strip + stagger */','}','');
     }
     L.push('@keyframes stripe-reveal {','  from { --progress: 0; }','  to { --progress: 1; }','}','');
     if(scrub){
@@ -519,11 +819,25 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
     }
     L.push('@media (prefers-reduced-motion: reduce) {','  .reveal { animation: none; mask-image: none; }','}');
     if(!scrub){
-      L.push('','/* JavaScript (the only part CSS cannot do: start on scroll-in, reverse on leave)');
-      L.push('const reveal = document.querySelector(".reveal");');
-      L.push('new IntersectionObserver(([entry]) => {');
-      L.push('  reveal.classList.toggle("is-revealed", entry.isIntersecting);');
-      L.push('}, { rootMargin: "0px 0px -45% 0px" }).observe(document.querySelector(".reveal-track"));');
+      L.push('','/* JavaScript: the one part CSS cannot do (start on scroll-in, reverse when scrolled back above)');
+      if(multi){
+        const th={top:0,center:0.5,bottom:1}[state.startEdge];
+        L.push('document.querySelectorAll(".reveal").forEach((revealElement) => {');
+        L.push('  new IntersectionObserver(([entry]) => {');
+        L.push('    if (entry.isIntersecting) revealElement.classList.add("is-revealed");');
+        L.push('    else if (entry.boundingClientRect.top > 0) revealElement.classList.remove("is-revealed");');
+        L.push('  }, {');
+        L.push('    rootMargin: "0px 0px -'+(100-state.startPos)+'% 0px", // a line '+state.startPos+'% down the viewport');
+        L.push('    threshold: '+th+(state.startEdge==='top'?' // fires as the element top crosses that line':' // fires when '+(th*100)+'% of the element has crossed that line'));
+        L.push('  }).observe(revealElement);');
+        L.push('});');
+      } else {
+        L.push('const reveal = document.querySelector(".reveal");');
+        L.push('new IntersectionObserver(([entry]) => {');
+        L.push('  if (entry.isIntersecting) reveal.classList.add("is-revealed");');
+        L.push('  else if (entry.boundingClientRect.top > 0) reveal.classList.remove("is-revealed");');
+        L.push('}, { rootMargin: "0px 0px -45% 0px" }).observe(document.querySelector(".reveal-track"));');
+      }
       L.push('*/');
     }
     return L.join('\n');
@@ -531,25 +845,55 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
 
   function snippetNote(){
     if(codeView==='gsap') return 'Needs GSAP and ScrollTrigger. Works in every current browser.';
+    if(codeView==='canvas') return 'Needs GSAP and ScrollTrigger, no CSS mask. GSAP drives the strips; each frame the canvas paints black bands as the mask, then draws the image with source-in so it only lands inside them.';
     const fx = state.ease==='expo.out'||state.ease==='circ.inOut' ? ' This ease uses CSS pow() or sqrt() (browsers from 2023 on).' : '';
-    if(state.mode==='scrub') return 'No JavaScript. Scrubbing uses CSS scroll-driven animations (Chrome and Edge 115+, Safari 26+). Firefox gets the unmasked image through the @supports fallback.'+fx;
-    return 'All CSS except a 5-line IntersectionObserver that adds the class (included at the bottom, commented). Random order is fixed when generated.'+fx;
+    const big = state.n>60 ? ' With '+state.n+' strips this CSS is long; the GSAP versions stay the same size at any count.' : '';
+    if(isScrub()) return 'No JavaScript. Scrubbing uses CSS scroll-driven animations (Chrome and Edge 115+, Safari 26+). Firefox gets the unmasked image through the @supports fallback.'+fx+big;
+    return 'All CSS except a short IntersectionObserver that adds the class (included at the bottom, commented). Random order is fixed when generated.'+fx+big;
   }
 
+  function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
   function renderSnippet(){
-    const text = codeView==='css' ? cssSnippetText() : snippetText();
-    $('snip').dataset.raw = text;
-    $('snip').innerHTML = esc(text).split('\n').map(line=>{
+    const text = codeView==='css' ? cssSnippetText() : codeView==='canvas' ? canvasSnippetText() : gsapSnippetText();
+    const pre=$('snip');
+    pre.dataset.raw = text;
+    pre.innerHTML = esc(text).split('\n').map(line=>{
       const t=line.trimStart();
       if(t.startsWith('//')) return '<span class="c">'+line+'</span>';
       const k=line.indexOf(' // ');
       if(k>-1) return line.slice(0,k)+'<span class="c">'+line.slice(k)+'</span>';
       return line;
-    }).join('\n')
-    // CSS block comments, including ones that span lines
-    .replace(/\/\*[\s\S]*?\*\//g, m=>'<span class="c">'+m.replace(/<\/?span[^>]*>/g,'')+'</span>');
+    }).join('\n').replace(/\/\*[\s\S]*?\*\//g, m=>'<span class="c">'+m.replace(/<\/?span[^>]*>/g,'')+'</span>');
     $('snipNote').textContent = snippetNote();
   }
+
+  /* ---------- controls ---------- */
+  function syncLabels(){
+    $('origin-left').textContent=isRows()?'Top':'Left';
+    $('origin-right').textContent=isRows()?'Bottom':'Right';
+    $('hudN').textContent=state.n; $('hudUnit').textContent=words().units; $('hudFrom').textContent=state.from;
+    $('posGroup').hidden=!isMulti();
+    $('endField').hidden=!isScrub();
+    $('durationField').hidden=isScrub();
+    $('replay').hidden=isScrub();
+    $('startOut').textContent=triggerStart(); $('endOut').textContent=triggerEnd();
+    $('eachOut').textContent=state.each.toFixed(2)+(isScrub()?'':' s');
+    $('durationOut').textContent=state.duration.toFixed(1)+' s';
+    const last=Math.max(...staggerDelays(state.n,state.each,state.from))+state.duration;
+    $('totalHint').textContent='The last strip finishes at '+(Math.round(last*100)/100)+' s.';
+  }
+  function syncControls(){
+    document.querySelectorAll('.seg:not(.tabs)').forEach(seg=>seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===state[seg.dataset.key]?'true':'false')));
+    $('n').value=state.n; $('n').removeAttribute('aria-invalid');
+    $('each').value=state.each; $('duration').value=state.duration;
+    $('feather').value=state.feather; $('featherOut').textContent=state.feather+'%';
+    $('ease').value=state.ease;
+    $('startEdge').value=state.startEdge; $('startPos').value=state.startPos;
+    $('endEdge').value=state.endEdge; $('endPos').value=state.endPos; $('clamp').checked=state.clamp;
+  }
+  function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
+  const rebuildSoon=debounce(build,160);
+
   document.querySelectorAll('.seg').forEach(seg=>{
     seg.addEventListener('click',e=>{
       const btn=e.target.closest('button'); if(!btn) return;
@@ -559,48 +903,65 @@ section.how h2{font-family:var(--display); font-weight:700; font-size:clamp(24px
       build();
     });
   });
-  function bindRange(id,key,fmt){
-    const el=$(id), out=$(id+'Out');
-    el.addEventListener('input',()=>{state[key]=parseFloat(el.value); out.textContent=fmt(state[key]);});
-    el.addEventListener('change',build);
-    el.addEventListener('input',debounce(build,140));
+
+  // Strips: whole number 2–500
+  const nInput=$('n');
+  function readStrips(commit){
+    const raw=nInput.value.trim(), v=Number(raw);
+    const ok=raw!=='' && Number.isInteger(v) && v>=2 && v<=500;
+    if(ok){ nInput.removeAttribute('aria-invalid'); if(v!==state.n){ state.n=v; rebuildSoon(); } return; }
+    if(commit){
+      const fixed=Math.min(500,Math.max(2,Math.round(isFinite(v)&&raw!==''?v:state.n)));
+      nInput.value=fixed; nInput.removeAttribute('aria-invalid');
+      if(fixed!==state.n){ state.n=fixed; build(); }
+    } else nInput.setAttribute('aria-invalid','true');
   }
-  function debounce(fn,ms){let t;return()=>{clearTimeout(t);t=setTimeout(fn,ms)}}
-  bindRange('n','n',v=>v);
-  bindRange('each','each',v=>v.toFixed(2));
-  $('feather').addEventListener('input',e=>{state.feather=+e.target.value; $('featherOut').textContent=state.feather+'%'; paintAndReadout(); liveTick=0; renderSnippet();});
-  $('ease').addEventListener('change',e=>{state.ease=e.target.value; build();});
-  $('replay').addEventListener('click',()=>tl&&tl.restart());
-  $('reset').addEventListener('click',()=>{
-    Object.assign(state,DEFAULTS);
-    $('n').value=12;$('nOut').textContent=12;$('each').value=.08;$('eachOut').textContent='0.08';
-    $('feather').value=0;$('featherOut').textContent='0%';$('ease').value=DEFAULTS.ease;
-    document.querySelectorAll('.seg:not(.tabs)').forEach(seg=>seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===DEFAULTS[seg.dataset.key]?'true':'false')));
-    build();
+  nInput.addEventListener('input',()=>readStrips(false));
+  nInput.addEventListener('change',()=>readStrips(true));
+  nInput.addEventListener('blur',()=>readStrips(true));
+
+  $('each').addEventListener('input',e=>{ state.each=parseFloat(e.target.value); syncLabels(); rebuildSoon(); });
+  $('duration').addEventListener('input',e=>{ state.duration=parseFloat(e.target.value); syncLabels(); rebuildSoon(); });
+  $('feather').addEventListener('input',e=>{ state.feather=+e.target.value; $('featherOut').textContent=state.feather+'%'; instances.forEach(paint); renderSnippet(); });
+  $('ease').addEventListener('change',e=>{ state.ease=e.target.value; build(); });
+  $('clamp').addEventListener('change',e=>{ state.clamp=e.target.checked; build(); });
+  ['startEdge','endEdge'].forEach(id=>$(id).addEventListener('change',e=>{ state[id]=e.target.value; build(); }));
+  ['startPos','endPos'].forEach(id=>{
+    const el=$(id);
+    const read=commit=>{
+      const v=Number(el.value), ok=el.value!=='' && isFinite(v) && v>=0 && v<=100;
+      if(ok){ el.removeAttribute('aria-invalid'); const r=Math.round(v); if(r!==state[id]){ state[id]=r; rebuildSoon(); } }
+      else if(commit){ el.value=state[id]; el.removeAttribute('aria-invalid'); }
+      else el.setAttribute('aria-invalid','true');
+    };
+    el.addEventListener('input',()=>read(false));
+    el.addEventListener('change',()=>read(true));
   });
+  $('replay').addEventListener('click',()=>instances.forEach(inst=>inst.tl&&inst.tl.restart()));
+  $('reset').addEventListener('click',()=>{ Object.assign(state,DEFAULTS); syncControls(); build(); });
 
   function copy(btn,text){
-    const done=()=>{const o=btn.textContent;btn.textContent='Copied';setTimeout(()=>btn.textContent=o,1200)};
-    try{ navigator.clipboard.writeText(text).then(done,()=>select(btn)); }catch(e){ select(btn); }
-  }
-  function select(btn){
-    const pre=btn.closest('.out,.snippet').querySelector('pre');
-    const r=document.createRange(); r.selectNodeContents(pre); const s=getSelection(); s.removeAllRanges(); s.addRange(r);
-    btn.textContent='Selected, press Ctrl+C';
-    setTimeout(()=>btn.textContent='Copy',1800);
+    const label=btn.textContent;
+    const done=()=>{btn.textContent='Copied';setTimeout(()=>btn.textContent=label,1200)};
+    const fallback=()=>{
+      const pre=btn.closest('.out,.snippet').querySelector('pre');
+      const r=document.createRange(); r.selectNodeContents(pre); const s=getSelection(); s.removeAllRanges(); s.addRange(r);
+      btn.textContent='Selected, press Ctrl+C'; setTimeout(()=>btn.textContent=label,1800);
+    };
+    try{ navigator.clipboard.writeText(text).then(done,fallback); }catch(e){ fallback(); }
   }
   $('copyLive').addEventListener('click',e=>copy(e.currentTarget,'mask-image: '+lastStr+';'));
   $('copySnip').addEventListener('click',e=>copy(e.currentTarget,$('snip').dataset.raw||$('snip').textContent));
 
   /* ---------- go ---------- */
+  syncControls();
   if(window.gsap && window.ScrollTrigger){
     gsap.registerPlugin(ScrollTrigger);
     build();
-  }else{
-    // Library failed to load: show the image fully so the page still reads
-    img.style.maskImage=img.style.webkitMaskImage='none';
-    live.textContent='GSAP did not load, so the animation is off.';
-    renderSnippet();
+  } else {
+    document.querySelectorAll('.masked').forEach(im=>{ im.style.maskImage=im.style.webkitMaskImage='none'; });
+    $('live').textContent='GSAP did not load, so the preview animation is off. The code generator still works.';
+    syncLabels(); renderSnippet();
   }
 })();
 </script>
